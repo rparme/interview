@@ -63,6 +63,10 @@
             # Bazel (bazelisk auto-downloads the version from .bazelversion)
             pkgs.bazelisk
 
+            # Docker
+            pkgs.docker
+            pkgs.docker-compose
+
             # Claude Code (installed via npm globally in shellHook)
           ];
 
@@ -77,6 +81,13 @@
             export PATH="$ZDOTDIR/bin:$PATH"
 
             cp -f ${zshrc} "$ZDOTDIR/.zshrc"
+
+            # Re-exec with the docker group active if it isn't already.
+            # Uses `sg` (shadow-utils) rather than `newgrp` so we can specify
+            # exactly which shell to start instead of dropping into a plain sh.
+            if ! id -Gn 2>/dev/null | grep -qw docker; then
+              exec sg docker -c "exec ${pkgs.zsh}/bin/zsh"
+            fi
             exec ${pkgs.zsh}/bin/zsh
           '';
         };

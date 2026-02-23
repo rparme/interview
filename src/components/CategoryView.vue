@@ -34,7 +34,16 @@
         <div class="card-top">
           <span class="lc-num">LC {{ problem.lc }}</span>
           <div class="badges">
-            <span v-if="problem.done" class="badge badge-done">&#10003; Done</span>
+            <!-- Done toggle checkbox -->
+            <button
+              class="done-toggle"
+              :class="{ 'is-done': problem.done }"
+              :style="problem.done ? { background: category.color, borderColor: category.color } : {}"
+              :aria-label="problem.done ? 'Mark as not done' : 'Mark as done'"
+              @click.stop="$emit('toggle-done', problem.lc)"
+            >
+              <span v-if="problem.done" aria-hidden="true">✓</span>
+            </button>
             <span class="badge" :class="`badge-${problem.difficulty}`">{{ problem.difficulty }}</span>
           </div>
         </div>
@@ -46,6 +55,7 @@
       :problem="selectedProblem"
       :category-color="category.color"
       @close="selectedProblem = null"
+      @toggle-done="$emit('toggle-done', $event)"
     />
   </div>
 </template>
@@ -58,7 +68,7 @@ const props = defineProps({
   category: { type: Object, required: true },
 })
 
-defineEmits(['back'])
+defineEmits(['back', 'toggle-done'])
 
 const selectedProblem = ref(null)
 
@@ -183,6 +193,25 @@ function onCardLeave(e, problem) {
 
 .badges { display: flex; gap: 0.35rem; align-items: center; }
 
+/* Done toggle checkbox */
+.done-toggle {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  border: 1.5px solid #30363d;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  color: #fff;
+  padding: 0;
+  transition: border-color 0.15s, background 0.15s;
+  flex-shrink: 0;
+}
+.done-toggle:hover:not(.is-done) { border-color: #58a6ff; }
+
 .badge {
   font-size: 0.68rem;
   font-weight: 600;
@@ -193,7 +222,6 @@ function onCardLeave(e, problem) {
 .badge-Easy   { background: rgba(63,185,80,0.15);  color: #3fb950; }
 .badge-Medium { background: rgba(210,153,34,0.15); color: #d29922; }
 .badge-Hard   { background: rgba(248,81,73,0.15);  color: #f85149; }
-.badge-done   { background: rgba(63,185,80,0.15);  color: #3fb950; }
 
 .problem-title { font-size: 0.9rem; font-weight: 500; line-height: 1.4; }
 

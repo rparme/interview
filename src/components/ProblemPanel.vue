@@ -14,13 +14,25 @@
           <div class="panel-badges">
             <span class="lc-num">LC {{ problem.lc }}</span>
             <span class="badge" :class="`badge-${problem.difficulty}`">{{ problem.difficulty }}</span>
-            <span v-if="problem.done" class="badge badge-done">✓ Done</span>
           </div>
           <button class="close-btn" @click="$emit('close')" aria-label="Close panel">✕</button>
         </div>
 
         <!-- Title -->
         <h2 class="panel-title">{{ problem.title }}</h2>
+
+        <!-- Done toggle button -->
+        <button
+          class="done-btn"
+          :class="{ 'is-done': problem.done }"
+          :style="problem.done
+            ? { borderColor: categoryColor, background: categoryColor + '20', color: categoryColor }
+            : {}"
+          @click="$emit('toggle-done', problem.lc)"
+        >
+          <span aria-hidden="true">{{ problem.done ? '✓' : '○' }}</span>
+          {{ problem.done ? 'Mark as not done' : 'Mark as done' }}
+        </button>
 
         <!-- LeetCode link -->
         <a
@@ -77,11 +89,11 @@
 import { watch } from 'vue'
 
 const props = defineProps({
-  problem: { type: Object, default: null },
+  problem:       { type: Object, default: null },
   categoryColor: { type: String, default: '#58a6ff' },
 })
 
-defineEmits(['close'])
+defineEmits(['close', 'toggle-done'])
 
 // Close on Escape key
 watch(() => props.problem, (val) => {
@@ -155,7 +167,6 @@ watch(() => props.problem, (val) => {
 .badge-Easy   { background: rgba(63,185,80,0.15);  color: #3fb950; }
 .badge-Medium { background: rgba(210,153,34,0.15); color: #d29922; }
 .badge-Hard   { background: rgba(248,81,73,0.15);  color: #f85149; }
-.badge-done   { background: rgba(63,185,80,0.15);  color: #3fb950; }
 
 .close-btn {
   background: none;
@@ -177,6 +188,25 @@ watch(() => props.problem, (val) => {
   line-height: 1.35;
   color: #e6edf3;
 }
+
+/* ── Done toggle button ── */
+.done-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.65rem 1rem;
+  background: #21262d;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  color: #8b949e;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+}
+.done-btn:hover:not(.is-done) { border-color: #58a6ff; color: #c9d1d9; }
 
 /* ── LeetCode button ── */
 .lc-btn {

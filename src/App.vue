@@ -1,10 +1,16 @@
 <template>
   <div class="app-root">
+    <UserMenu @open-auth="showAuthModal = true" />
+    <AuthModal :open="showAuthModal" @close="showAuthModal = false" />
+
     <Transition name="fade" mode="out-in">
       <!-- Main mindmap view -->
       <MindmapView
         v-if="activeView === 'map'"
         key="map"
+        :categories="enrichedCategories"
+        :total-done="totalDone"
+        :total-probs="totalProbs"
         @select="openCategory"
       />
 
@@ -14,10 +20,11 @@
         key="category"
         :category="selectedCategory"
         @back="goBack"
+        @toggle-done="onToggleDone"
       />
     </Transition>
 
-    <GlobalChip :done="TOTAL_DONE" :total="TOTAL_PROBS" />
+    <GlobalChip :done="totalDone" :total="totalProbs" />
   </div>
 </template>
 
@@ -26,16 +33,20 @@ import { ref, computed } from 'vue'
 import MindmapView from './components/MindmapView.vue'
 import CategoryView from './components/CategoryView.vue'
 import GlobalChip from './components/GlobalChip.vue'
-import { CATEGORIES, TOTAL_DONE, TOTAL_PROBS } from './data.js'
+import UserMenu from './components/UserMenu.vue'
+import AuthModal from './components/AuthModal.vue'
+import { useAuth } from './composables/useAuth.js'
+import { useProblems } from './composables/useProblems.js'
 
-/** Which top-level view is shown: 'map' | 'category' */
-const activeView = ref('map')
+const { user } = useAuth()
+const { enrichedCategories, totalDone, totalProbs, toggleDone } = useProblems()
 
-/** ID of the category currently being viewed, or null. */
+const activeView     = ref('map')
 const activeCategoryId = ref(null)
+const showAuthModal  = ref(false)
 
 const selectedCategory = computed(() =>
-  CATEGORIES.find(c => c.id === activeCategoryId.value) ?? null
+  enrichedCategories.value.find(c => c.id === activeCategoryId.value) ?? null
 )
 
 function openCategory(id) {
@@ -46,6 +57,14 @@ function openCategory(id) {
 function goBack() {
   activeView.value = 'map'
   activeCategoryId.value = null
+}
+
+function onToggleDone(lc) {
+  if (!user.value) {
+    showAuthModal.value = true
+  } else {
+    toggleDone(lc)
+  }
 }
 </script>
 

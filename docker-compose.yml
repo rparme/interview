@@ -1,0 +1,77 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB:       interview
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      # Init scripts run in alphabetical order on first startup (empty data dir).
+      # 00 — auth schema stub (must precede schema.sql which references auth.users)
+      - ./docker/auth_stub.sql:/docker-entrypoint-initdb.d/00_auth_stub.sql:ro
+      # 01 — table definitions + RLS policies
+      - ./supabase/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      # 02 — category + problem rows
+      - ./supabase/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+      # 03 — anon + authenticator roles for PostgREST
+      - ./docker/postgrest_roles.sql:/docker-entrypoint-initdb.d/03_postgrest_roles.sql:ro
+      # Persist data across container restarts
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d interview"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  auth:
+    image: supabase/gotrue:v2.170.0
+    restart: unless-stopped
+    ports:
+      - "9999:9999"
+    environment:
+      GOTRUE_API_HOST:               0.0.0.0
+      GOTRUE_API_PORT:               9999
+      API_EXTERNAL_URL:              http://localhost:9999
+      GOTRUE_DB_DRIVER:              postgres
+      # GoTrue manages the auth schema; connect as postgres superuser for local dev
+      GOTRUE_DB_DATABASE_URL:        postgres://postgres:postgres@db:5432/interview?search_path=auth
+      GOTRUE_SITE_URL:               http://localhost:5173
+      GOTRUE_URI_ALLOW_LIST:         http://localhost:5173
+      GOTRUE_DISABLE_SIGNUP:         "false"
+      GOTRUE_JWT_SECRET:             super-secret-jwt-token-with-at-least-32-characters-long
+      GOTRUE_JWT_EXP:                3600
+      GOTRUE_JWT_DEFAULT_GROUP_NAME: authenticated
+      GOTRUE_JWT_AUD:                authenticated
+      # Skip email verification in local dev — no SMTP needed
+      GOTRUE_MAILER_AUTOCONFIRM:     "true"
+      # OAuth providers — uncomment and fill in to enable SSO locally
+      # GOTRUE_EXTERNAL_GITHUB_ENABLED:   "true"
+      # GOTRUE_EXTERNAL_GITHUB_CLIENT_ID: your-github-client-id
+      # GOTRUE_EXTERNAL_GITHUB_SECRET:    your-github-secret
+      # GOTRUE_EXTERNAL_GITHUB_REDIRECT_URI: http://localhost:9999/callback
+    depends_on:
+      db:
+        condition: service_healthy
+
+  rest:
+    image: postgrest/postgrest:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      # Connect as 'authenticator', which PostgREST switches to the JWT role (anon or authenticated)
+      PGRST_DB_URI:        postgres://authenticator:authenticator@db:5432/interview
+      PGRST_DB_SCHEMA:     public
+      PGRST_DB_ANON_ROLE:  anon
+      # Must match VITE_LOCAL_JWT_SECRET (used to verify / generate tokens locally)
+      PGRST_JWT_SECRET:    super-secret-jwt-token-with-at-least-32-characters-long
+      PGRST_SERVER_PORT:   3000
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db_data:

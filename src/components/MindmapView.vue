@@ -9,7 +9,7 @@
     >
       <!-- connector lines drawn first, behind nodes -->
       <line
-        v-for="(cat, i) in CATEGORIES"
+        v-for="(cat, i) in categories"
         :key="`line-${cat.id}`"
         :x1="CX"
         :y1="CY"
@@ -83,7 +83,7 @@
 
       <!-- category nodes -->
       <g
-        v-for="(cat, i) in CATEGORIES"
+        v-for="(cat, i) in categories"
         :key="cat.id"
         class="category-node"
         tabindex="0"
@@ -183,7 +183,12 @@
 
 <script setup>
 import { computed } from 'vue'
-import { CATEGORIES, TOTAL_DONE, TOTAL_PROBS } from '../data.js'
+
+const props = defineProps({
+  categories: { type: Array, required: true },
+  totalDone:  { type: Number, required: true },
+  totalProbs: { type: Number, required: true },
+})
 
 defineEmits(['select'])
 
@@ -195,14 +200,11 @@ const NODE_R = 56
 const RING_R = 84
 const FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
 
-const totalDone  = TOTAL_DONE
-const totalProbs = TOTAL_PROBS
-
 /**
  * Compute the (x, y) center for node at index i, distributed radially.
  */
 function nodePos(i) {
-  const angle = -Math.PI / 2 + (i * 2 * Math.PI) / CATEGORIES.length
+  const angle = -Math.PI / 2 + (i * 2 * Math.PI) / props.categories.length
   return {
     x: CX + ORBIT * Math.cos(angle),
     y: CY + ORBIT * Math.sin(angle),
@@ -224,7 +226,10 @@ function progressColor(cat) {
 
 // Center ring geometry
 const ringCirc   = computed(() => 2 * Math.PI * RING_R)
-const ringOffset = computed(() => ringCirc.value - (totalDone / totalProbs) * ringCirc.value)
+const ringOffset = computed(() => {
+  if (!props.totalProbs) return ringCirc.value
+  return ringCirc.value - (props.totalDone / props.totalProbs) * ringCirc.value
+})
 
 /** Arc circumference for node i's progress ring. */
 function arcCirc(i) {
@@ -233,7 +238,7 @@ function arcCirc(i) {
 
 /** Arc dashoffset for node i's partial progress. */
 function arcOffset(i) {
-  const cat   = CATEGORIES[i]
+  const cat   = props.categories[i]
   const done  = catDone(cat)
   const total = cat.problems.length
   const circ  = 2 * Math.PI * (NODE_R + 7)
