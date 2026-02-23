@@ -1,5 +1,9 @@
 <template>
   <div class="mindmap-view">
+    <div class="page-header" aria-hidden="true">
+      <p class="page-title">Interview Patterns</p>
+      <p class="page-subtitle">Master the patterns. Crack the interview.</p>
+    </div>
     <svg
       class="mindmap-svg"
       viewBox="0 0 1000 700"
@@ -248,11 +252,43 @@ function arcOffset(i) {
 
 <style scoped>
 .mindmap-view {
+  position: relative;
   width: 100vw;
   height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.page-header {
+  position: absolute;
+  top: 2.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 2;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.page-title {
+  font-size: clamp(1.5rem, 3vw, 2.4rem);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, #e6edf3 0%, #58a6ff 60%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin: 0 0 0.3rem;
+}
+
+.page-subtitle {
+  font-size: clamp(0.7rem, 1.3vw, 0.85rem);
+  color: #6e7681;
+  margin: 0;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  font-weight: 500;
 }
 
 .mindmap-svg {

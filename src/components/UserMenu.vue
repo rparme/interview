@@ -25,6 +25,9 @@
       <Transition name="dropdown">
         <div v-if="dropdownOpen" class="dropdown" role="menu">
           <p class="dropdown-email">{{ user.email }}</p>
+          <button class="dropdown-profile" @click="handleOpenProfile" role="menuitem">
+            Profile
+          </button>
           <button class="dropdown-signout" @click="handleSignOut" role="menuitem">
             Sign out
           </button>
@@ -38,7 +41,7 @@
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useAuth, signOut } from '../composables/useAuth.js'
 
-const emit = defineEmits(['open-auth'])
+const emit = defineEmits(['open-auth', 'open-profile'])
 
 const { user } = useAuth()
 const dropdownOpen = ref(false)
@@ -50,6 +53,11 @@ const initials = computed(() => {
   const name = user.value?.user_metadata?.full_name || user.value?.email || '?'
   return name.split(/\s|@/)[0].slice(0, 2).toUpperCase()
 })
+
+function handleOpenProfile() {
+  dropdownOpen.value = false
+  emit('open-profile')
+}
 
 async function handleSignOut() {
   dropdownOpen.value = false
@@ -125,7 +133,8 @@ onUnmounted(() => document.removeEventListener('click', onOutsideClick))
   border: 1px solid #30363d;
   border-radius: 10px;
   padding: 0.75rem;
-  min-width: 180px;
+  min-width: 200px;
+  max-width: 200px;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
@@ -136,8 +145,25 @@ onUnmounted(() => document.removeEventListener('click', onOutsideClick))
   font-size: 0.78rem;
   color: #8b949e;
   margin: 0;
-  word-break: break-all;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 200px;
 }
+
+.dropdown-profile {
+  padding: 0.4rem 0.6rem;
+  background: none;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  font-size: 0.82rem;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, color 0.15s;
+}
+.dropdown-profile:hover { border-color: #58a6ff; color: #58a6ff; }
 
 .dropdown-signout {
   padding: 0.4rem 0.6rem;

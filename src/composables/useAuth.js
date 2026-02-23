@@ -43,6 +43,11 @@ export async function signOut() {
   if (error) throw error
 }
 
+export async function updatePassword(newPassword) {
+  const { error } = await supabase.auth.updateUser({ password: newPassword })
+  if (error) throw error
+}
+
 export function useAuth() {
   return { user, loading }
 }

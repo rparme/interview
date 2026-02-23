@@ -1,7 +1,8 @@
 <template>
   <div class="app-root">
-    <UserMenu @open-auth="showAuthModal = true" />
+    <UserMenu @open-auth="showAuthModal = true" @open-profile="showProfileModal = true" />
     <AuthModal :open="showAuthModal" @close="showAuthModal = false" />
+    <ProfileModal :open="showProfileModal" @close="showProfileModal = false" />
 
     <Transition name="fade" mode="out-in">
       <!-- Main mindmap view -->
@@ -35,15 +36,17 @@ import CategoryView from './components/CategoryView.vue'
 import GlobalChip from './components/GlobalChip.vue'
 import UserMenu from './components/UserMenu.vue'
 import AuthModal from './components/AuthModal.vue'
+import ProfileModal from './components/ProfileModal.vue'
 import { useAuth } from './composables/useAuth.js'
 import { useProblems } from './composables/useProblems.js'
 
 const { user } = useAuth()
 const { enrichedCategories, totalDone, totalProbs, toggleDone } = useProblems()
 
-const activeView     = ref('map')
+const activeView       = ref('map')
 const activeCategoryId = ref(null)
-const showAuthModal  = ref(false)
+const showAuthModal    = ref(false)
+const showProfileModal = ref(false)
 
 const selectedCategory = computed(() =>
   enrichedCategories.value.find(c => c.id === activeCategoryId.value) ?? null
