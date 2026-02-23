@@ -54,7 +54,7 @@
     <ProblemPanel
       :problem="selectedProblem"
       :category-color="category.color"
-      @close="selectedProblem = null"
+      @close="selectedLc = null"
       @toggle-done="$emit('toggle-done', $event)"
     />
   </div>
@@ -70,14 +70,18 @@ const props = defineProps({
 
 defineEmits(['back', 'toggle-done'])
 
-const selectedProblem = ref(null)
+const selectedLc = ref(null)
+// Derived from props so it stays in sync when doneSet updates
+const selectedProblem = computed(() =>
+  props.category.problems.find(p => p.lc === selectedLc.value) ?? null
+)
 
 const doneCnt  = computed(() => props.category.problems.filter(p => p.done).length)
 const totalCnt = computed(() => props.category.problems.length)
 const pct      = computed(() => Math.round((doneCnt.value / totalCnt.value) * 100))
 
 function openPanel(problem) {
-  selectedProblem.value = problem
+  selectedLc.value = problem.lc
 }
 
 function cardStyle(problem) {
