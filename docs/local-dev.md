@@ -45,10 +45,10 @@ Docker runs these SQL files in order on first startup (fresh volume):
 
 | File | Purpose |
 |---|---|
-| `docker/auth_stub.sql` | Creates `auth` schema + `auth.uid()` stub so `schema.sql` loads cleanly |
-| `supabase/schema.sql` | Tables + RLS policies (same file used by Supabase cloud) |
-| `supabase/seed.sql` | 8 categories + 37 problems |
-| `docker/postgrest_roles.sql` | `anon` + `authenticator` roles required by PostgREST |
+| `docker/auth_stub.sql` | Creates `auth` schema + `auth.uid()` so the migration can reference `auth.users` |
+| `supabase/migrations/20260223000000_init.sql` | Tables, RLS policies, profile trigger |
+| `supabase/migrations/20260223000001_seed.sql` | 8 categories + 37 problems |
+| `docker/postgrest_roles.sql` | `anon`, `authenticator`, `authenticated` roles required by PostgREST |
 
 To reset the database: `docker compose down -v && docker compose up -d`
 

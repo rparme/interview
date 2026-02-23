@@ -1,0 +1,57 @@
+# Supabase CLI project configuration.
+# Docs: https://supabase.com/docs/guides/cli/config
+#
+# Local dev (supabase start) is NOT used here — the project runs its own
+# docker-compose stack. This file exists so that `supabase db push` and
+# `supabase migration` commands work against the remote Supabase project.
+#
+# To deploy schema to production:
+#   supabase login
+#   supabase link --project-ref <your-project-ref>
+#   supabase db push
+
+project_id = "interview"
+
+[api]
+enabled     = true
+port        = 54321
+schemas     = ["public"]
+max_rows    = 1000
+
+[db]
+port         = 54322
+shadow_port  = 54320
+major_version = 15
+
+[studio]
+enabled = true
+port    = 54323
+
+[inbucket]
+enabled   = true
+port      = 54324
+smtp_port = 54325
+pop3_port = 54326
+
+[storage]
+enabled        = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled                    = true
+site_url                   = "http://localhost:5173"
+additional_redirect_urls   = ["http://localhost:5173"]
+jwt_expiry                 = 3600
+enable_signup              = true
+enable_anonymous_sign_ins  = false
+minimum_password_length    = 6
+
+[auth.email]
+enable_signup        = true
+enable_confirmations = false   # true in production (set via Supabase dashboard)
+
+[auth.sms]
+enable_signup = false
+
+[analytics]
+enabled = false

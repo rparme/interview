@@ -1,5 +1,5 @@
 -- Auth schema bootstrap.
--- Runs before schema.sql (which references auth.users) and before GoTrue starts.
+-- Runs before the migration (which references auth.users) and before GoTrue starts.
 --
 -- auth.users is created here with the exact columns from GoTrue's initial migration
 -- so that GoTrue's own "CREATE TABLE IF NOT EXISTS auth.users" is a no-op and its

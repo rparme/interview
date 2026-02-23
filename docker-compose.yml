@@ -12,10 +12,10 @@ services:
       # Init scripts run in alphabetical order on first startup (empty data dir).
       # 00 — auth schema stub (must precede schema.sql which references auth.users)
       - ./docker/auth_stub.sql:/docker-entrypoint-initdb.d/00_auth_stub.sql:ro
-      # 01 — table definitions + RLS policies
-      - ./supabase/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      # 01 — table definitions + RLS policies (mirrors supabase/migrations/20260223000000_init.sql)
+      - ./supabase/migrations/20260223000000_init.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       # 02 — category + problem rows
-      - ./supabase/seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
+      - ./supabase/migrations/20260223000001_seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
       # 03 — anon + authenticator roles for PostgREST
       - ./docker/postgrest_roles.sql:/docker-entrypoint-initdb.d/03_postgrest_roles.sql:ro
       # Persist data across container restarts

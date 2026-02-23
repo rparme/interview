@@ -1,3 +1,6 @@
+-- ── Reference data seed ──────────────────────────────────────────────────────
+-- ON CONFLICT DO NOTHING makes this idempotent (safe to re-run).
+
 -- Categories
 INSERT INTO public.categories (id, name, lines, color) VALUES
   ('sliding-window',      'Sliding Window',       ARRAY['Sliding', 'Window'],     '#f97316'),

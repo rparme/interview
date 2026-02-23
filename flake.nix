@@ -67,6 +67,9 @@
             pkgs.docker
             pkgs.docker-compose
 
+            # Supabase CLI (supabase db push, supabase migration new, etc.)
+            pkgs.supabase-cli
+
             # Claude Code (installed via npm globally in shellHook)
           ];
 
