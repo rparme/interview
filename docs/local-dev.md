@@ -29,11 +29,15 @@ npm run dev
 | Variable | Local value | Production value |
 |---|---|---|
 | `VITE_SUPABASE_URL` | `http://localhost:5173` | `https://<project>.supabase.co` |
-| `VITE_SUPABASE_ANON_KEY` | well-known local JWT (see `.env.example`) | project anon key from Supabase dashboard |
+| `VITE_SUPABASE_ANON_KEY` | well-known local JWT (see `.env.example`) | publishable key from Supabase dashboard |
 
 ## Production deployment
 
-Set the two env vars to your Supabase project values (Dashboard → Settings → API) and deploy the `dist/` output of `npm run build`.
+Set the two env vars to your Supabase project values and deploy the `dist/` output of `npm run build`.
+
+**Dashboard → Settings → API**
+- `VITE_SUPABASE_URL` → "Project URL"
+- `VITE_SUPABASE_ANON_KEY` → "Publishable key" (previously labelled `anon` — same key, renamed for clarity)
 
 ## How the local stack is initialised
 
