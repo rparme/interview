@@ -16,8 +16,10 @@ services:
       - ./supabase/migrations/20260223000000_init.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
       # 02 — category + problem rows
       - ./supabase/migrations/20260223000001_seed.sql:/docker-entrypoint-initdb.d/02_seed.sql:ro
-      # 03 — anon + authenticator roles for PostgREST
-      - ./docker/postgrest_roles.sql:/docker-entrypoint-initdb.d/03_postgrest_roles.sql:ro
+      # 03 — additional problems
+      - ./supabase/migrations/20260224000001_add_two_sum_ii.sql:/docker-entrypoint-initdb.d/03_add_two_sum_ii.sql:ro
+      # 04 — anon + authenticator roles for PostgREST
+      - ./docker/postgrest_roles.sql:/docker-entrypoint-initdb.d/04_postgrest_roles.sql:ro
       # Persist data across container restarts
       - db_data:/var/lib/postgresql/data
     healthcheck:

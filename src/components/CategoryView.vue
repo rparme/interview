@@ -17,7 +17,7 @@
 
     <div class="problems-grid">
       <div
-        v-for="problem in category.problems"
+        v-for="problem in sortedProblems"
         :key="problem.lc"
         class="problem-card"
         :class="{ done: problem.done, active: selectedProblem?.lc === problem.lc }"
@@ -74,6 +74,13 @@ const selectedLc = ref(null)
 // Derived from props so it stays in sync when doneSet updates
 const selectedProblem = computed(() =>
   props.category.problems.find(p => p.lc === selectedLc.value) ?? null
+)
+
+const DIFFICULTY_ORDER = { Easy: 0, Medium: 1, Hard: 2 }
+const sortedProblems = computed(() =>
+  [...props.category.problems].sort(
+    (a, b) => DIFFICULTY_ORDER[a.difficulty] - DIFFICULTY_ORDER[b.difficulty]
+  )
 )
 
 const doneCnt  = computed(() => props.category.problems.filter(p => p.done).length)
