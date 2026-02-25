@@ -3,6 +3,7 @@
   "outputDirectory": "dist",
   "functions": {
     "api/generate.mjs": { "maxDuration": 60 },
+    "api/review.mjs": { "maxDuration": 60 },
     "api/generate-tests.mjs": { "maxDuration": 60 }
   }
 }

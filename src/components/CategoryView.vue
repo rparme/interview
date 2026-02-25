@@ -116,9 +116,9 @@
               :disabled="isGenerating"
               @click="generate"
             >
-              <span v-if="isGenerating" class="spinner" aria-hidden="true" />
-              <span v-else aria-hidden="true">✨</span>
-              {{ isGenerating ? generationStatus : 'Generate Problem' }}
+              <span class="gen-prompt" aria-hidden="true">&gt;_</span>
+              <span v-if="isGenerating">{{ generationStatus }}<span class="anim-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></span>
+              <span v-else>generate</span>
             </button>
           </div>
         </div>
@@ -171,8 +171,8 @@
 
         <!-- ── Mode: generating problem (step 1) ── -->
         <div v-if="panelMode === 'loading'" class="panel-loading">
-          <span class="spinner panel-spinner" aria-hidden="true" />
-          <p>{{ generationStatus }}</p>
+          <pre class="panel-anim-code" aria-hidden="true">{{ panelAnimText }}</pre>
+          <span class="panel-anim-status">{{ generationStatus }}<span class="anim-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></span>
         </div>
 
         <!-- ── Mode: generated AI problem ── -->
@@ -210,8 +210,7 @@
                 <h3 class="section-label">Unit Tests</h3>
                 <div class="tests-header-right">
                   <span v-if="isGeneratingTests" class="tests-status">
-                    <span class="spinner spinner-sm" aria-hidden="true" />
-                    Writing…
+                    writing tests<span class="anim-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span>
                   </span>
                   <template v-else-if="generatedProblem.unitTests">
                     <span v-if="allTestsPassing && testResults.length" class="tests-summary tests-all-pass">All passing</span>
@@ -284,12 +283,16 @@
 
             <section v-if="selectedExercise.whenTo" class="panel-section">
               <h3 class="section-label">When to use</h3>
-              <p class="detail-text">{{ selectedExercise.whenTo }}</p>
+              <div class="hint-block">
+                <p class="hint-text">{{ selectedExercise.whenTo }}</p>
+              </div>
             </section>
 
             <section v-if="selectedExercise.howTo" class="panel-section">
               <h3 class="section-label">How to approach</h3>
-              <p class="detail-text">{{ selectedExercise.howTo }}</p>
+              <div class="hint-block">
+                <p class="hint-text">{{ selectedExercise.howTo }}</p>
+              </div>
             </section>
 
             <div v-if="!selectedExercise.whenTo && !selectedExercise.howTo" class="detail-empty">
@@ -308,6 +311,59 @@
 
     </div>
   </div>
+
+  <!-- ── Exercise popup ── -->
+  <Teleport to="body">
+    <Transition name="popup">
+      <div v-if="popupProblem" class="popup-backdrop" @click.self="closePopup">
+        <div class="popup-card" role="dialog" aria-modal="true" :aria-label="popupProblem.title">
+
+          <!-- Header -->
+          <div class="popup-header">
+            <span class="panel-badge" :class="`badge-${popupProblem.difficulty}`">{{ popupProblem.difficulty }}</span>
+            <h2 class="popup-title">{{ popupProblem.title }}</h2>
+            <button class="popup-close" aria-label="Close" @click="closePopup">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+
+          <!-- Body -->
+          <div class="popup-body">
+            <a
+              v-if="popupProblem.url"
+              :href="popupProblem.url"
+              target="_blank"
+              rel="noopener"
+              class="platform-link lc-link"
+            >
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M13.483 0a1.374 1.374 0 0 0-.961.438L7.116 6.226l-3.854 4.126a5.266 5.266 0 0 0-1.209 2.104 5.35 5.35 0 0 0-.125.513 5.527 5.527 0 0 0 .062 2.362 5.83 5.83 0 0 0 .349 1.017 5.938 5.938 0 0 0 1.271 1.818l4.277 4.193.039.038c2.248 2.165 5.852 2.133 8.063-.074l2.396-2.392c.54-.54.54-1.414.003-1.955a1.378 1.378 0 0 0-1.951-.003l-2.396 2.392a3.021 3.021 0 0 1-4.205.038l-.02-.019-4.276-4.193c-.652-.64-.972-1.469-.948-2.263a2.68 2.68 0 0 1 .066-.523 2.545 2.545 0 0 1 .619-1.164L9.13 8.114c1.058-1.134 3.204-1.27 4.43-.278l3.501 2.831c.593.48 1.461.387 1.94-.207a1.384 1.384 0 0 0-.207-1.943l-3.5-2.831c-.8-.647-1.766-1.045-2.774-1.202l2.015-2.158A1.384 1.384 0 0 0 13.483 0zm-2.866 12.815a1.38 1.38 0 0 0-1.38 1.382 1.38 1.38 0 0 0 1.38 1.382H20.79a1.38 1.38 0 0 0 1.38-1.382 1.38 1.38 0 0 0-1.38-1.382z"/></svg>
+              Open on LeetCode
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="link-arrow"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>
+
+            <section v-if="popupProblem.whenTo" class="popup-section">
+              <h3 class="section-label">When to use</h3>
+              <div class="hint-block">
+                <p class="hint-text">{{ popupProblem.whenTo }}</p>
+              </div>
+            </section>
+
+            <section v-if="popupProblem.howTo" class="popup-section">
+              <h3 class="section-label">How to approach</h3>
+              <div class="hint-block">
+                <p class="hint-text">{{ popupProblem.howTo }}</p>
+              </div>
+            </section>
+
+            <div v-if="!popupProblem.whenTo && !popupProblem.howTo" class="detail-empty">
+              No hints available for this exercise.
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup>
@@ -365,11 +421,26 @@ function selectExercise(problem) {
   }
 }
 
-// Always opens the detail panel, even when a generated problem is displayed
+// ── Exercise popup ─────────────────────────────────────────────────────────────
+
+const popupProblem = ref(null)
+
 function openExercise(problem) {
-  selectedExercise.value = problem
-  panelMode.value = 'exercise'
+  popupProblem.value = problem
 }
+
+function closePopup() {
+  popupProblem.value = null
+}
+
+function onPopupKey(e) {
+  if (e.key === 'Escape') closePopup()
+}
+
+watch(popupProblem, (val) => {
+  if (val) document.addEventListener('keydown', onPopupKey)
+  else     document.removeEventListener('keydown', onPopupKey)
+})
 
 // ── Generator ─────────────────────────────────────────────────────────────────
 
@@ -401,6 +472,63 @@ const descriptionHtml = computed(() =>
 
 // True during step 2: problem exists but tests are still being generated
 const isGeneratingTests = computed(() => isGenerating.value && !!generatedProblem.value)
+
+// ── ASCII typewriter animation ─────────────────────────────────────────────────
+
+const REVIEW_FRAMES = [
+  '# verifying examples...',
+  '# verifying examples...\nassert solution([2,7], 9)|',
+  '# verifying examples...\nassert solution([2,7], 9) == [0,1]',
+  '# verifying examples...\nassert solution([2,7], 9) == [0,1]  ✓',
+  '# verifying examples...\nassert solution([2,7], 9) == [0,1]  ✓\nassert solution([3,2,4], 6)|',
+  '# verifying examples...\nassert solution([2,7], 9) == [0,1]  ✓\nassert solution([3,2,4], 6) == [1,2]',
+  '# verifying examples...\nassert solution([2,7], 9) == [0,1]  ✓\nassert solution([3,2,4], 6) == [1,2]  ✓',
+  '# verifying examples...\nassert solution([2,7], 9) == [0,1]  ✓\nassert solution([3,2,4], 6) == [1,2]  ✓\n# cleaning up...',
+]
+
+const PROB_FRAMES = [
+  'def solution(nums):',
+  'def solution(nums):|',
+  'def solution(nums):\n    result = {}',
+  'def solution(nums):\n    result = {}|',
+  'def solution(nums):\n    result = {}\n    for i, num in enumerate(nums):',
+  'def solution(nums):\n    result = {}\n    for i, num in enumerate(nums):|',
+  'def solution(nums):\n    result = {}\n    for i, num in enumerate(nums):\n        complement = target - num',
+  'def solution(nums):\n    result = {}\n    for i, num in enumerate(nums):\n        complement = target - num|',
+]
+
+const TEST_FRAMES = [
+  'class TestSolution(unittest.TestCase):',
+  'class TestSolution(unittest.TestCase):|',
+  'class TestSolution(unittest.TestCase):\n    def test_basic(self):',
+  'class TestSolution(unittest.TestCase):\n    def test_basic(self):|',
+  'class TestSolution(unittest.TestCase):\n    def test_basic(self):\n        self.assertEqual(solution([2,7,11,15], 9), [0,1])',
+  'class TestSolution(unittest.TestCase):\n    def test_basic(self):\n        self.assertEqual(solution([2,7,11,15], 9), [0,1])|',
+  'class TestSolution(unittest.TestCase):\n    def test_basic(self):\n        self.assertEqual(solution([2,7,11,15], 9), [0,1])\n    def test_edge(self):',
+  'class TestSolution(unittest.TestCase):\n    def test_basic(self):\n        self.assertEqual(solution([2,7,11,15], 9), [0,1])\n    def test_edge(self):|',
+]
+
+const animFrame = ref(0)
+let _animTimer = null
+
+const panelAnimText = computed(() => {
+  const frames =
+    generationStatus.value === 'reviewing' ? REVIEW_FRAMES :
+    generationStatus.value === 'writing tests' ? TEST_FRAMES :
+    PROB_FRAMES
+  return frames[animFrame.value % frames.length]
+})
+
+
+function startAnim() {
+  animFrame.value = 0
+  _animTimer = setInterval(() => { animFrame.value++ }, 200)
+}
+
+function stopAnim() {
+  clearInterval(_animTimer)
+  _animTimer = null
+}
 
 // Auto-show tests as soon as they arrive
 watch(() => generatedProblem.value?.unitTests, (tests) => {
@@ -438,6 +566,7 @@ async function generate() {
   generatedProblem.value = null
   showTests.value = false
   panelMode.value = 'loading'
+  startAnim()
 
   const selectedProblems = [...selectedForAI]
     .map(lc => problemByLc(lc))
@@ -445,27 +574,32 @@ async function generate() {
     .map(({ title, difficulty }) => ({ title, difficulty }))
 
   try {
-    // Step 1 — generate problem
-    generationStatus.value = '✨ Generating problem…'
-    const problem = await apiFetch('/api/generate', {
+    // Step 1 — generate problem draft
+    generationStatus.value = 'generating'
+    const draft = await apiFetch('/api/generate', {
       category: props.category.name,
       selectedProblems,
       businessField: businessField.value || null,
     })
 
-    // Show problem immediately; switch panel to generated view
+    // Step 2 — review & fix examples
+    generationStatus.value = 'reviewing'
+    const problem = await apiFetch('/api/review', { problem: draft })
+
+    // Show reviewed problem; switch panel to generated view
     generatedProblem.value = { ...problem, unitTests: '' }
     panelMode.value = 'generated'
     if (editorInstance) editorInstance.setValue(problem.starterCode)
 
-    // Step 2 — generate unit tests
-    generationStatus.value = '⚗️ Writing unit tests…'
+    // Step 3 — generate unit tests
+    generationStatus.value = 'writing tests'
     const { unitTests } = await apiFetch('/api/generate-tests', { problem })
     generatedProblem.value = { ...problem, unitTests }
   } catch (err) {
     generationError.value = err.message
     panelMode.value = selectedExercise.value ? 'exercise' : 'empty'
   } finally {
+    stopAnim()
     isGenerating.value = false
     generationStatus.value = ''
   }
@@ -778,6 +912,7 @@ ensureWorker()
 onMounted(() => initEditor())
 
 onBeforeUnmount(() => {
+  stopAnim()
   destroyEditor()
   document.removeEventListener('mousemove', onResizeMove)
   document.removeEventListener('mouseup', onResizeEnd)
@@ -1076,22 +1211,42 @@ onBeforeUnmount(() => {
 .generate-btn {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.3rem 0.85rem;
+  gap: 0.45rem;
+  padding: 0.28rem 0.85rem 0.28rem 0.7rem;
   background: none;
   border: 1px solid #30363d;
   border-radius: 6px;
   color: #6e7681;
-  font-size: 0.8rem;
-  font-weight: 600;
-  font-family: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  font-family: 'Fira Code', 'SF Mono', monospace;
   cursor: pointer;
   white-space: nowrap;
+  letter-spacing: 0.01em;
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 .generate-btn:not(:disabled):hover { background: #161b22; }
 .generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .generate-btn.is-loading { color: #6e7681; border-color: #30363d; }
+
+.gen-prompt {
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  font-size: 0.68rem;
+  letter-spacing: -0.04em;
+  opacity: 0.75;
+}
+
+.anim-dots {
+  display: inline-flex;
+  font-family: 'Fira Code', 'SF Mono', monospace;
+}
+.anim-dots span { opacity: 0.15; animation: dot-pulse 1.2s ease-in-out infinite; }
+.anim-dots span:nth-child(2) { animation-delay: 0.3s; }
+.anim-dots span:nth-child(3) { animation-delay: 0.6s; }
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.15; }
+  50%       { opacity: 1; }
+}
 
 .gen-error {
   padding: 0.45rem 1rem;
@@ -1414,22 +1569,37 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: center;
   gap: 0.9rem;
-  color: #6e7681;
-  font-size: 0.84rem;
+  padding: 1.5rem;
 }
-.panel-spinner {
-  width: 20px;
-  height: 20px;
-  border-width: 2px;
+
+.panel-anim-code {
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  font-size: 0.76rem;
+  line-height: 1.7;
+  color: #8b949e;
+  background: #0d1117;
+  border: 1px solid #21262d;
+  border-radius: 8px;
+  padding: 0.85rem 1rem;
+  margin: 0;
+  white-space: pre;
+  min-width: 230px;
+  min-height: 72px;
+}
+
+.panel-anim-status {
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  font-size: 0.72rem;
+  color: #3d444d;
+  letter-spacing: 0.03em;
 }
 
 /* Unit tests loading indicator */
 .tests-status {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  font-size: 0.68rem;
-  color: #6e7681;
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  font-size: 0.67rem;
+  color: #3d444d;
+  letter-spacing: 0.02em;
 }
 .spinner-sm {
   width: 8px;
@@ -1475,6 +1645,54 @@ onBeforeUnmount(() => {
   color: #8b949e;
   line-height: 1.65;
   margin: 0;
+}
+
+.hint-block {
+  background: rgba(255,255,255,0.015);
+  border: 1px solid #21262d;
+  border-radius: 6px;
+  overflow: hidden;
+}
+.hint-block::before {
+  content: '[';
+  display: block;
+  padding: 0.55rem 0.75rem 0;
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  font-size: 0.72rem;
+  color: #3d444d;
+  line-height: 1;
+  user-select: none;
+}
+.hint-block::after {
+  content: ']';
+  display: block;
+  padding: 0 0.75rem 0.55rem;
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  font-size: 0.72rem;
+  color: #3d444d;
+  line-height: 1;
+  user-select: none;
+}
+.hint-text {
+  margin: 0;
+  padding: 0.18rem 0.75rem 0.18rem 1.4rem;
+  font-size: 0.82rem;
+  color: #8b949e;
+  line-height: 1.7;
+}
+.hint-text::before {
+  content: '"';
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  color: #3d444d;
+  font-size: 0.88em;
+  margin-right: 0.08em;
+}
+.hint-text::after {
+  content: '"';
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  color: #3d444d;
+  font-size: 0.88em;
+  margin-left: 0.08em;
 }
 
 .detail-empty {
@@ -1625,4 +1843,93 @@ onBeforeUnmount(() => {
 @media (max-width: 650px) {
   .problems-sidebar { width: 160px; }
 }
+
+/* ── Exercise popup ── */
+.popup-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(1, 4, 9, 0.7);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 200;
+  padding: 1.5rem;
+}
+
+.popup-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 12px;
+  width: 100%;
+  max-width: 500px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+}
+
+.popup-header {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.9rem 1rem;
+  border-bottom: 1px solid #21262d;
+  flex-shrink: 0;
+}
+
+.popup-title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #e6edf3;
+  flex: 1;
+  min-width: 0;
+  line-height: 1.3;
+}
+
+.popup-close {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: #6e7681;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s, background 0.15s;
+}
+.popup-close:hover {
+  color: #e6edf3;
+  border-color: #30363d;
+  background: #21262d;
+}
+
+.popup-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  scrollbar-width: thin;
+  scrollbar-color: #30363d transparent;
+}
+
+.popup-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+/* Transition */
+.popup-enter-active { transition: opacity 0.18s ease, transform 0.18s ease; }
+.popup-leave-active { transition: opacity 0.14s ease, transform 0.14s ease; }
+.popup-enter-from  { opacity: 0; }
+.popup-leave-to    { opacity: 0; }
+.popup-enter-from .popup-card { transform: scale(0.96) translateY(6px); }
+.popup-leave-to   .popup-card { transform: scale(0.96) translateY(6px); }
 </style>
