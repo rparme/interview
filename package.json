@@ -8,6 +8,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@monaco-editor/loader": "^1.7.0",
     "@supabase/supabase-js": "^2.97.0",
     "vue": "^3.4.0"
   },
