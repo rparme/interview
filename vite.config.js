@@ -13,6 +13,10 @@ export default defineConfig(({ command }) => ({
   ...(command === 'serve' && {
     server: {
       proxy: {
+        '/api': {
+          target: 'http://localhost:3001',
+          changeOrigin: true,
+        },
         '/rest/v1': {
           target: 'http://localhost:3000',
           changeOrigin: true,

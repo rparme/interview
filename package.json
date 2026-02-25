@@ -4,16 +4,22 @@
   "private": true,
   "scripts": {
     "dev": "vite",
+    "dev:ai": "concurrently -k -n \"vite,api\" -c \"cyan,yellow\" \"vite\" \"vercel dev --listen 3001 --yes\"",
     "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
     "@monaco-editor/loader": "^1.7.0",
+    "@openrouter/ai-sdk-provider": "^2.2.3",
     "@supabase/supabase-js": "^2.97.0",
-    "vue": "^3.4.0"
+    "ai": "^6.0.99",
+    "marked": "^17.0.3",
+    "vue": "^3.4.0",
+    "zod": "^4.3.6"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",
+    "concurrently": "^9.2.1",
     "vite": "^5.0.0"
   }
 }
