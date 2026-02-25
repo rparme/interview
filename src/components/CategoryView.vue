@@ -185,12 +185,59 @@
         <div v-if="editorError" class="editor-error">{{ editorError }}</div>
         <div ref="editorEl" class="editor-container" :style="editorError ? { display: 'none' } : {}" />
 
-        <div class="output-pane">
-          <div class="output-header">
+        <div class="output-pane" :style="{ height: outputHeight + 'px' }">
+          <!-- Horizontal resize handle at top edge -->
+          <div class="output-resize-handle" @mousedown.prevent="onOutputResizeStart" />
+
+          <!-- Plain header when no tests ran -->
+          <div v-if="!testResults.length" class="output-header">
             <span>Output</span>
-            <button v-if="output" class="clear-btn" @click="output = ''; hasError = false">Clear</button>
+            <button v-if="output" class="clear-btn" @click="clearOutput">Clear</button>
           </div>
-          <pre class="output-content" :class="{ 'has-error': hasError }">{{ outputDisplay }}</pre>
+
+          <!-- Tab bar when tests ran -->
+          <div v-else class="output-tabs">
+            <div class="output-tabs-scroll" @wheel.prevent="e => e.currentTarget.scrollLeft += e.deltaY">
+              <button
+                v-if="output"
+                class="out-tab"
+                :class="{ 'out-tab-active': activeTestTab === '__console__' }"
+                @click="activeTestTab = '__console__'"
+              >Console</button>
+              <button
+                v-for="r in testResults"
+                :key="r.name"
+                class="out-tab"
+                :class="[{ 'out-tab-active': activeTestTab === r.name }, `out-tab-${r.status}`]"
+                @click="activeTestTab = r.name"
+              >
+                <span class="out-tab-dot" />
+                {{ r.name }}
+              </button>
+            </div>
+            <button class="clear-btn tabs-clear-btn" @click="clearOutput">Clear</button>
+          </div>
+
+          <!-- Content -->
+          <div class="output-scroll">
+            <template v-if="testResults.length">
+              <pre v-if="activeTestTab === '__console__'" class="output-content" :class="{ 'has-error': hasError }">{{ output.trimEnd() || '(no output)' }}</pre>
+              <template v-for="r in testResults" :key="r.name">
+                <div v-if="activeTestTab === r.name" class="tab-body">
+                  <div v-if="parsedTestCases[r.name]" class="tab-meta">
+                    <span class="tab-meta-key">In</span>
+                    <code class="tab-meta-val">{{ parsedTestCases[r.name].input }}</code>
+                    <span class="tab-meta-arrow">→</span>
+                    <span class="tab-meta-key">Expected</span>
+                    <code class="tab-meta-val">{{ parsedTestCases[r.name].expected }}</code>
+                  </div>
+                  <pre v-if="r.stdout?.trim() || r.message" class="output-content" :class="r.status !== 'pass' ? 'has-error' : ''">{{ [r.stdout?.trimEnd(), r.message].filter(Boolean).join('\n') }}</pre>
+                  <div v-else class="tob-empty">No output — test passed cleanly.</div>
+                </div>
+              </template>
+            </template>
+            <pre v-else class="output-content" :class="{ 'has-error': hasError }">{{ outputDisplay }}</pre>
+          </div>
         </div>
 
       </div>
@@ -274,7 +321,14 @@
                       <span v-else-if="testResultFor(name)?.status === 'fail' || testResultFor(name)?.status === 'error'" class="icon-fail">✗</span>
                       <span v-else class="icon-pending">○</span>
                     </span>
-                    <span class="test-name">{{ formatTestName(name) }}</span>
+                    <div class="test-name-col">
+                      <span class="test-name">{{ formatTestName(name) }}</span>
+                      <span v-if="parsedTestCases[name]" class="test-io-row">
+                        <span class="test-io-key">In</span><code class="test-io-val">{{ parsedTestCases[name].input }}</code>
+                        <span class="test-io-arrow">→</span>
+                        <span class="test-io-key">Exp</span><code class="test-io-val">{{ parsedTestCases[name].expected }}</code>
+                      </span>
+                    </div>
                     <span class="test-expand-icon" aria-hidden="true">{{ expandedTest === name ? '▾' : '▸' }}</span>
                   </div>
                   <pre v-if="expandedTest === name && testSourceFor(name)" class="test-source">{{ testSourceFor(name) }}</pre>
@@ -926,7 +980,44 @@ function runPython(code) {
 const output   = ref('')
 const hasError = ref(false)
 const isRunning = ref(false)
-const testResults = ref([]) // [{name, status, message?}]
+const testResults = ref([]) // [{name, status, message?, stdout?}]
+const activeTestTab = ref(null)
+const outputHeight = ref(170)
+
+function clearOutput() {
+  output.value = ''
+  testResults.value = []
+  hasError.value = false
+  activeTestTab.value = null
+}
+
+// ── Output pane resize (drag top edge up/down) ─────────────────────────────
+
+let isOutputResizing = false
+let outputResizeStartY = 0
+let outputResizeStartHeight = 0
+
+function onOutputResizeStart(e) {
+  isOutputResizing = true
+  outputResizeStartY = e.clientY
+  outputResizeStartHeight = outputHeight.value
+  document.addEventListener('mousemove', onOutputResizeMove)
+  document.addEventListener('mouseup', onOutputResizeEnd)
+  rootEl.value?.classList.add('is-resizing-output')
+}
+
+function onOutputResizeMove(e) {
+  if (!isOutputResizing) return
+  const delta = outputResizeStartY - e.clientY
+  outputHeight.value = Math.max(80, Math.min(600, outputResizeStartHeight + delta))
+}
+
+function onOutputResizeEnd() {
+  isOutputResizing = false
+  document.removeEventListener('mousemove', onOutputResizeMove)
+  document.removeEventListener('mouseup', onOutputResizeEnd)
+  rootEl.value?.classList.remove('is-resizing-output')
+}
 
 const outputDisplay = computed(() =>
   output.value || '# Click "Run" or press Ctrl+Enter to execute'
@@ -936,6 +1027,18 @@ const outputDisplay = computed(() =>
 const parsedTestNames = computed(() => {
   const raw = generatedProblem.value?.unitTests ?? ''
   return [...raw.matchAll(/def (test_\w+)\(/g)].map(m => m[1])
+})
+
+// Parses the embedded # __CASES__: comment to get {name, input, expected} per test.
+// Returns a map keyed by method name so template lookups are O(1).
+const parsedTestCases = computed(() => {
+  const raw = generatedProblem.value?.unitTests ?? ''
+  const firstLine = raw.split('\n')[0]
+  if (!firstLine.startsWith('# __CASES__:')) return {}
+  try {
+    const cases = JSON.parse(firstLine.slice('# __CASES__:'.length))
+    return Object.fromEntries(cases.map(c => [c.name, c]))
+  } catch { return {} }
 })
 
 const allTestsPassing = computed(() =>
@@ -979,10 +1082,10 @@ function testSourceFor(name) {
   return bodyLines.join('\n')
 }
 
-// Custom Python reporter injected at runtime — outputs a single JSON line
+// Custom Python reporter — runs each test individually, captures its stdout separately
 const TEST_RUNNER = `
-import json as _json, unittest as _unittest
-class _C(_unittest.TestResult):
+import json as _json, unittest as _unittest, io as _io, contextlib as _ctx
+class _R(_unittest.TestResult):
     def __init__(self):
         super().__init__(); self._r = []
     def addSuccess(self, t):
@@ -991,9 +1094,16 @@ class _C(_unittest.TestResult):
         self._r.append({'name': t._testMethodName, 'status': 'fail', 'message': str(err[1])})
     def addError(self, t, err):
         self._r.append({'name': t._testMethodName, 'status': 'error', 'message': str(err[1])})
-_s = _unittest.TestLoader().loadTestsFromTestCase(TestSolution)
-_c = _C(); _s.run(_c)
-print('__TEST_RESULTS__:' + _json.dumps(_c._r))
+_results = []
+for _t in _unittest.TestLoader().loadTestsFromTestCase(TestSolution):
+    _buf = _io.StringIO()
+    _r = _R()
+    with _ctx.redirect_stdout(_buf):
+        _unittest.TestSuite([_t]).run(_r)
+    for _item in _r._r:
+        _item['stdout'] = _buf.getvalue()
+    _results.extend(_r._r)
+print('__TEST_RESULTS__:' + _json.dumps(_results))
 `
 
 async function runCode() {
@@ -1025,7 +1135,12 @@ async function runCode() {
       // Parse structured test results
       const lines = stdout.split('\n')
       const resultsLine = lines.find(l => l.startsWith('__TEST_RESULTS__:'))
-      try { testResults.value = JSON.parse(resultsLine.slice('__TEST_RESULTS__:'.length)) } catch {}
+      try {
+        testResults.value = JSON.parse(resultsLine.slice('__TEST_RESULTS__:'.length))
+        // Auto-select first failing test, falling back to first test
+        const first = testResults.value.find(r => r.status !== 'pass') ?? testResults.value[0]
+        if (first) activeTestTab.value = first.name
+      } catch {}
       // Show remaining stdout (user print statements)
       const cleanOut = lines.filter(l => !l.startsWith('__TEST_RESULTS__:')).join('\n').trimEnd()
       output.value = cleanOut
@@ -1095,6 +1210,8 @@ onBeforeUnmount(() => {
   destroyEditor()
   document.removeEventListener('mousemove', onResizeMove)
   document.removeEventListener('mouseup', onResizeEnd)
+  document.removeEventListener('mousemove', onOutputResizeMove)
+  document.removeEventListener('mouseup', onOutputResizeEnd)
 })
 </script>
 
@@ -1507,12 +1624,29 @@ onBeforeUnmount(() => {
 
 /* Output */
 .output-pane {
-  height: 170px;
+  /* height is set via inline style (outputHeight ref) */
   flex-shrink: 0;
   border-top: 1px solid #21262d;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
+
+.output-resize-handle {
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: row-resize;
+  z-index: 10;
+}
+.output-resize-handle:hover,
+.category-view.is-resizing-output .output-resize-handle {
+  background: #58a6ff40;
+}
+.category-view.is-resizing-output { cursor: row-resize; user-select: none; }
+.category-view.is-resizing-output .editor-container { pointer-events: none; }
 
 .output-header {
   display: flex;
@@ -1543,22 +1677,125 @@ onBeforeUnmount(() => {
 }
 .clear-btn:hover { color: #c9d1d9; }
 
-.output-content {
+.output-scroll {
   flex: 1;
   overflow-y: auto;
+  background: #0d1117;
+  scrollbar-width: thin;
+  scrollbar-color: #30363d transparent;
+  display: flex;
+  flex-direction: column;
+}
+
+.output-content {
+  flex: 1;
   padding: 0.6rem 1rem;
   margin: 0;
   font-family: 'Fira Code', 'SF Mono', 'Cascadia Code', monospace;
   font-size: 0.78rem;
   line-height: 1.65;
   color: #8b949e;
-  background: #0d1117;
   white-space: pre-wrap;
   word-break: break-word;
+}
+.output-content.has-error { color: #f85149; }
+
+/* Tab bar */
+.output-tabs {
+  display: flex;
+  align-items: stretch;
+  height: 28px;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+  flex-shrink: 0;
+}
+
+.output-tabs-scroll {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  overflow-x: auto;
+  min-width: 0;
   scrollbar-width: thin;
   scrollbar-color: #30363d transparent;
 }
-.output-content.has-error { color: #f85149; }
+.output-tabs-scroll::-webkit-scrollbar { height: 3px; }
+.output-tabs-scroll::-webkit-scrollbar-track { background: transparent; }
+.output-tabs-scroll::-webkit-scrollbar-thumb { background: #30363d; border-radius: 2px; }
+
+.out-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0 0.75rem;
+  background: none;
+  border: none;
+  border-right: 1px solid #21262d;
+  color: #6e7681;
+  font-size: 0.7rem;
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.12s, background 0.12s;
+  flex-shrink: 0;
+}
+.out-tab:hover { background: #1c2128; color: #c9d1d9; }
+.out-tab-active { background: #0d1117 !important; color: #e6edf3 !important; border-bottom: 2px solid #58a6ff; }
+
+.out-tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #484f58;
+  flex-shrink: 0;
+}
+.out-tab-pass .out-tab-dot { background: #3fb950; }
+.out-tab-fail .out-tab-dot,
+.out-tab-error .out-tab-dot { background: #f85149; }
+
+.tabs-clear-btn {
+  flex-shrink: 0;
+  border-left: 1px solid #21262d;
+  padding: 0 0.6rem;
+}
+
+.tab-body { flex: 1; display: flex; flex-direction: column; }
+
+.tab-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 1rem;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.tab-meta-key {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #484f58;
+  flex-shrink: 0;
+}
+.tab-meta-val {
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  font-size: 0.75rem;
+  color: #a5d6ff;
+  background: #21262d;
+  padding: 0.1em 0.4em;
+  border-radius: 4px;
+}
+.tab-meta-arrow { color: #3d444d; font-size: 0.8rem; flex-shrink: 0; }
+
+.tob-empty {
+  padding: 0.6rem 1rem;
+  color: #484f58;
+  font-size: 0.75rem;
+  font-style: italic;
+  font-family: 'Fira Code', 'SF Mono', monospace;
+}
 
 /* ── Right: generated problem panel ── */
 .problem-panel {
@@ -1970,15 +2207,51 @@ onBeforeUnmount(() => {
   border-width: 1.5px;
 }
 
+.test-name-col {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  flex: 1;
+  min-width: 0;
+}
+
 .test-name {
   font-size: 0.78rem;
   font-family: 'Fira Code', 'SF Mono', monospace;
   color: #8b949e;
   line-height: 1.3;
-  flex: 1;
 }
 .test-item.test-pass .test-name { color: #3fb950; }
 .test-item.test-fail .test-name { color: #f85149; }
+
+.test-io-row {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.test-io-key {
+  font-size: 0.6rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #484f58;
+  flex-shrink: 0;
+}
+.test-io-val {
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  font-size: 0.68rem;
+  color: #8b949e;
+  background: #0d1117;
+  padding: 0.05em 0.3em;
+  border-radius: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 120px;
+}
+.test-io-arrow { color: #3d444d; font-size: 0.7rem; flex-shrink: 0; }
 
 .test-expand-icon {
   font-size: 0.6rem;

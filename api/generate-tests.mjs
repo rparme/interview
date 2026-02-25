@@ -6,13 +6,29 @@ const UNIT_TEST_TOOL_SCHEMA = {
   properties: {
     unitTests: {
       type: 'string',
-      description: 'Complete Python unittest.TestCase subclass. Imports unittest at the top. Does NOT implement Solution. Ends with: if __name__ == "__main__": unittest.main(verbosity=2)',
+      description: 'Complete Python unittest.TestCase subclass. Imports unittest at the top. Class TestSolution(unittest.TestCase) with test methods. Does NOT implement Solution. Ends with: if __name__ == "__main__": unittest.main(verbosity=2)',
+    },
+    testCases: {
+      type: 'array',
+      description: 'One entry per test method — must match every def test_* in unitTests',
+      items: {
+        type: 'object',
+        properties: {
+          name:     { type: 'string', description: 'Exact test method name, e.g. test_basic_case' },
+          input:    { type: 'string', description: 'Human-readable input args, e.g. "nums=[1,2], target=3"' },
+          expected: { type: 'string', description: 'Expected return value, e.g. "[0, 1]"' },
+        },
+        required: ['name', 'input', 'expected'],
+      },
     },
   },
-  required: ['unitTests'],
+  required: ['unitTests', 'testCases'],
 }
 
-const ResultSchema = z.object({ unitTests: z.string() })
+const ResultSchema = z.object({
+  unitTests: z.string(),
+  testCases: z.array(z.object({ name: z.string(), input: z.string(), expected: z.string() })).default([]),
+})
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
@@ -44,7 +60,8 @@ Rules:
 - Import unittest at the top
 - Class TestSolution(unittest.TestCase) with at least 2 test methods matching the examples above
 - Do NOT implement Solution — tests run alongside the user's code
-- End with: if __name__ == "__main__": unittest.main(verbosity=2)`
+- End with: if __name__ == "__main__": unittest.main(verbosity=2)
+- In testCases, provide one entry per test method with the exact method name, the human-readable input, and expected output`
 
   console.log('[generate-tests] generating for:', problem.title)
 
@@ -70,8 +87,13 @@ Rules:
       return res.status(502).json({ error: 'Tests schema mismatch', detail: result.error.issues })
     }
 
-    console.log('[generate-tests] done, length:', result.data.unitTests.length)
-    return res.status(200).json(result.data)
+    // Embed test-case metadata as a first-line comment so it persists in the DB
+    // alongside the Python code without needing a separate column.
+    const casesComment = `# __CASES__:${JSON.stringify(result.data.testCases)}\n`
+    const unitTests = casesComment + result.data.unitTests
+
+    console.log('[generate-tests] done, length:', unitTests.length, 'cases:', result.data.testCases.length)
+    return res.status(200).json({ unitTests })
   } catch (err) {
     console.error('[generate-tests] error:', err.message)
     return res.status(err.status ?? 500).json({ error: err.message, detail: err.detail })
