@@ -12,6 +12,12 @@ export default defineConfig(({ command }) => ({
   // In production the real Supabase URL is used directly — no proxy involved.
   ...(command === 'serve' && {
     server: {
+      watch: {
+        // inotify doesn't work on Windows-mounted drives (/mnt/c/) in WSL2.
+        // Polling is slower but reliable; 300ms is a good balance.
+        usePolling: true,
+        interval: 300,
+      },
       proxy: {
         '/api': {
           target: 'http://localhost:3001',

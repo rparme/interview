@@ -26,3 +26,12 @@ grant select on public.profiles to authenticated;
 -- Progress: authenticated users can read, mark done (insert) and unmark (delete)
 -- No UPDATE grant — the toggle is delete + insert, not an in-place update
 grant select, insert, delete on public.user_progress to authenticated;
+
+-- AI-generated exercises: authenticated users manage their own rows
+grant select, insert, delete on public.generated_exercises to authenticated;
+
+-- User solutions (editor code): authenticated users manage their own rows
+grant select, insert, update, delete on public.user_solutions to authenticated;
+
+-- ensure_profile(): called before any user insert to lazily create missing profile rows
+grant execute on function public.ensure_profile() to authenticated;

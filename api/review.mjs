@@ -32,8 +32,33 @@ const REVIEW_TOOL_SCHEMA = {
     },
     constraints: { type: 'array', minItems: 2, maxItems: 5, items: { type: 'string' } },
     starterCode: { type: 'string' },
+    all_examples_verified: {
+      type: 'boolean',
+      description: 'Set to true ONLY if you have step-by-step traced a correct solution for EVERY example and confirmed the output is mathematically correct. Set to false if you had to fix anything or are unsure about any example.',
+    },
   },
-  required: ['title', 'description', 'examples', 'constraints', 'starterCode'],
+  required: ['title', 'description', 'examples', 'constraints', 'starterCode', 'all_examples_verified'],
+}
+
+const SYSTEM_PROMPT = 'You are a meticulous coding interview problem reviewer. Your only job is to find and fix factual errors — wrong example outputs, inconsistent explanations, contradictions. Do not change the problem concept or difficulty.'
+
+function buildPrompt(problem, isRetry) {
+  const prefix = isRetry
+    ? 'A previous review pass found issues with this problem. Review it again very carefully.\n\n'
+    : ''
+  return `${prefix}Review the following coding interview problem and return a corrected version.
+
+${JSON.stringify(problem, null, 2)}
+
+For each example:
+- Step through a correct solution on the given input, showing your reasoning.
+- If the stated output is wrong, compute the correct one and fix the explanation.
+- If the explanation is vague or inconsistent with the input/output, rewrite it in one precise sentence.
+
+Fix any contradictions between the description and the examples.
+Keep the title, constraints, and starterCode unchanged unless they directly contradict a corrected example.
+Set all_examples_verified to true only if every example is now mathematically confirmed correct.
+Return the complete corrected problem.`
 }
 
 export default async function handler(req, res) {
@@ -46,48 +71,48 @@ export default async function handler(req, res) {
   const { problem } = req.body ?? {}
   if (!problem) return res.status(400).json({ error: 'problem is required' })
 
-  const systemPrompt = 'You are a meticulous coding interview problem reviewer. Your only job is to find and fix factual errors — wrong example outputs, inconsistent explanations, contradictions. Do not change the problem concept or difficulty.'
-
-  const userPrompt = `Review the following coding interview problem and return a corrected version.
-
-${JSON.stringify(problem, null, 2)}
-
-For each example:
-- Mentally run a correct solution on the given input.
-- If the stated output is wrong, compute the correct one and fix the explanation.
-- If the explanation is vague or inconsistent with the input/output, rewrite it in one precise sentence.
-
-Fix any contradictions between the description and the examples.
-Keep the title, constraints, and starterCode unchanged unless they directly contradict a corrected example.
-Return the complete corrected problem.`
-
   console.log(`[review] provider=${provider.type} title="${problem.title}"`)
 
-  try {
-    const raw = provider.type === 'anthropic'
-      ? await callAnthropic(provider.key, {
-          systemPrompt,
-          userPrompt,
-          toolName: 'review_problem',
-          toolDescription: 'Review and correct a coding interview problem',
-          inputSchema: REVIEW_TOOL_SCHEMA,
-        })
-      : await callOpenRouter(provider.key, {
-          systemPrompt,
-          userPrompt: userPrompt + '\n\nRespond with valid JSON only matching the original structure.',
-        })
+  let current = problem
+  const MAX_PASSES = 3
 
-    const result = ProblemSchema.safeParse(raw)
-    if (!result.success) {
-      console.warn('[review] schema mismatch, returning original:', result.error.issues)
-      return res.status(200).json(problem)
+  for (let pass = 0; pass < MAX_PASSES; pass++) {
+    if (pass > 0) console.log(`[review] pass ${pass + 1} — re-reviewing after issues found`)
+
+    const userPrompt = buildPrompt(current, pass > 0)
+
+    try {
+      const raw = provider.type === 'anthropic'
+        ? await callAnthropic(provider.key, {
+            systemPrompt: SYSTEM_PROMPT,
+            userPrompt,
+            toolName: 'review_problem',
+            toolDescription: 'Review and correct a coding interview problem',
+            inputSchema: REVIEW_TOOL_SCHEMA,
+          })
+        : await callOpenRouter(provider.key, {
+            systemPrompt: SYSTEM_PROMPT,
+            userPrompt: userPrompt + '\n\nRespond with valid JSON only, including the all_examples_verified field.',
+          })
+
+      const result = ProblemSchema.safeParse(raw)
+      if (!result.success) {
+        console.warn(`[review] schema mismatch on pass ${pass + 1}, keeping previous:`, result.error.issues)
+        break
+      }
+
+      current = result.data
+
+      if (raw.all_examples_verified === true) {
+        console.log(`[review] verified on pass ${pass + 1}:`, current.title)
+        break
+      }
+      console.log(`[review] pass ${pass + 1} flagged issues, will retry`)
+    } catch (err) {
+      console.error(`[review] error on pass ${pass + 1}, keeping previous:`, err.message)
+      break
     }
-
-    console.log('[review] done:', result.data.title)
-    return res.status(200).json(result.data)
-  } catch (err) {
-    console.error('[review] error, returning original:', err.message)
-    // Graceful fallback — original problem is still usable
-    return res.status(200).json(problem)
   }
+
+  return res.status(200).json(current)
 }

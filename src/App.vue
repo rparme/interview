@@ -4,26 +4,22 @@
     <AuthModal :open="showAuthModal" @close="showAuthModal = false" />
     <ProfileModal :open="showProfileModal" @close="showProfileModal = false" />
 
-    <Transition name="fade" mode="out-in">
-      <!-- Main mindmap view -->
-      <MindmapView
-        v-if="activeView === 'map'"
-        key="map"
-        :categories="enrichedCategories"
-        :total-done="totalDone"
-        :total-probs="totalProbs"
-        @select="openCategory"
-      />
+    <!-- Main mindmap view -->
+    <MindmapView
+      v-if="activeView === 'map'"
+      :categories="enrichedCategories"
+      :total-done="totalDone"
+      :total-probs="totalProbs"
+      @select="openCategory"
+    />
 
-      <!-- Category detail view -->
-      <CategoryView
-        v-else-if="activeView === 'category' && selectedCategory"
-        key="category"
-        :category="selectedCategory"
-        @back="goBack"
-        @toggle-done="onToggleDone"
-      />
-    </Transition>
+    <!-- Category detail view -->
+    <CategoryView
+      v-else-if="activeView === 'category' && selectedCategory"
+      :category="selectedCategory"
+      @back="goBack"
+      @toggle-done="onToggleDone"
+    />
 
     <GlobalChip :done="totalDone" :total="totalProbs" />
   </div>
@@ -72,18 +68,9 @@ function onToggleDone(lc) {
 </script>
 
 <style>
-/* Fade transition */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.25s ease;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
 .app-root {
   min-height: 100vh;
 }
+
+
 </style>

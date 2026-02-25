@@ -78,7 +78,7 @@ onUnmounted(() => document.removeEventListener('click', onOutsideClick))
 <style scoped>
 .user-menu {
   position: fixed;
-  top: 1rem;
+  top: 7px; /* (topbar 50px - avatar 36px) / 2 */
   right: 1rem;
   z-index: 60;
 }

@@ -83,6 +83,36 @@
             </button>
           </div>
         </div>
+
+        <!-- DB save error -->
+        <div v-if="dbSaveError" class="sidebar-db-error">
+          <span class="db-error-icon">!</span>{{ dbSaveError }}
+        </div>
+
+        <!-- Saved generated exercises -->
+        <template v-if="savedExercises.length">
+          <div class="sidebar-divider">
+            <span class="divider-label">Generated</span>
+          </div>
+          <div
+            v-for="ex in savedExercises"
+            :key="ex.id"
+            class="saved-ex-item"
+            :class="{ 'is-active': currentExerciseId === ex.id }"
+            @click="openSavedExercise(ex)"
+          >
+            <div class="saved-ex-top">
+              <span class="badge" :class="`badge-${ex.difficulty}`">{{ ex.difficulty }}</span>
+              <button
+                class="saved-ex-delete"
+                title="Delete"
+                aria-label="Delete generated exercise"
+                @click.stop="deleteGeneratedExercise(ex, $event)"
+              >✕</button>
+            </div>
+            <span class="saved-ex-title">{{ ex.title }}</span>
+          </div>
+        </template>
       </div>
 
       <!-- CENTER: editor -->
@@ -178,7 +208,7 @@
         <!-- ── Mode: generated AI problem ── -->
         <template v-else-if="panelMode === 'generated' && generatedProblem">
           <div class="panel-topbar">
-            <span class="panel-badge" :class="`badge-${difficultyGuess}`">{{ difficultyGuess }}</span>
+            <span class="panel-badge" :class="`badge-${generatedProblem.difficulty ?? difficultyGuess}`">{{ generatedProblem.difficulty ?? difficultyGuess }}</span>
             <h2 class="panel-title">{{ generatedProblem.title }}</h2>
           </div>
 
@@ -281,17 +311,21 @@
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" class="link-arrow"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             </a>
 
-            <section v-if="selectedExercise.whenTo" class="panel-section">
+            <section v-if="selectedExercise.whenTo?.length" class="panel-section">
               <h3 class="section-label">When to use</h3>
               <div class="hint-block">
-                <p class="hint-text">{{ selectedExercise.whenTo }}</p>
+                <ul class="hint-list">
+                  <li v-for="(item, i) in selectedExercise.whenTo" :key="i">{{ item }}</li>
+                </ul>
               </div>
             </section>
 
-            <section v-if="selectedExercise.howTo" class="panel-section">
+            <section v-if="selectedExercise.howTo?.length" class="panel-section">
               <h3 class="section-label">How to approach</h3>
               <div class="hint-block">
-                <p class="hint-text">{{ selectedExercise.howTo }}</p>
+                <ul class="hint-list">
+                  <li v-for="(item, i) in selectedExercise.howTo" :key="i">{{ item }}</li>
+                </ul>
               </div>
             </section>
 
@@ -341,17 +375,21 @@
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="link-arrow"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
             </a>
 
-            <section v-if="popupProblem.whenTo" class="popup-section">
+            <section v-if="popupProblem.whenTo?.length" class="popup-section">
               <h3 class="section-label">When to use</h3>
               <div class="hint-block">
-                <p class="hint-text">{{ popupProblem.whenTo }}</p>
+                <ul class="hint-list">
+                  <li v-for="(item, i) in popupProblem.whenTo" :key="i">{{ item }}</li>
+                </ul>
               </div>
             </section>
 
-            <section v-if="popupProblem.howTo" class="popup-section">
+            <section v-if="popupProblem.howTo?.length" class="popup-section">
               <h3 class="section-label">How to approach</h3>
               <div class="hint-block">
-                <p class="hint-text">{{ popupProblem.howTo }}</p>
+                <ul class="hint-list">
+                  <li v-for="(item, i) in popupProblem.howTo" :key="i">{{ item }}</li>
+                </ul>
               </div>
             </section>
 
@@ -370,6 +408,8 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount, reactive } from 'vue'
 import loader from '@monaco-editor/loader'
 import { marked } from 'marked'
+import { supabase } from '../lib/supabase.js'
+import { useAuth } from '../composables/useAuth.js'
 
 marked.use({ breaks: true, gfm: true })
 
@@ -378,6 +418,8 @@ const props = defineProps({
 })
 
 defineEmits(['back', 'toggle-done'])
+
+const { user } = useAuth()
 
 // ── Problem list ──────────────────────────────────────────────────────────────
 
@@ -441,6 +483,124 @@ watch(popupProblem, (val) => {
   if (val) document.addEventListener('keydown', onPopupKey)
   else     document.removeEventListener('keydown', onPopupKey)
 })
+
+// ── Saved generated exercises ─────────────────────────────────────────────────
+
+const savedExercises    = ref([])   // user's persisted AI exercises for this category
+const currentExerciseId = ref(null) // uuid of the exercise currently open in the editor
+const dbSaveError       = ref(null) // non-null when the last DB save failed
+let _saveTimer = null
+
+function dbRowToExercise(row) {
+  return {
+    id:          row.id,
+    title:       row.title,
+    description: row.description,
+    examples:    row.examples,
+    constraints: row.constraints,
+    starterCode: row.starter_code,
+    unitTests:   row.unit_tests || '',
+    difficulty:  row.difficulty,
+  }
+}
+
+async function loadSavedExercises() {
+  if (!user.value) { savedExercises.value = []; return }
+  const { data } = await supabase
+    .from('generated_exercises')
+    .select('*')
+    .eq('user_id', user.value.id)
+    .eq('category_id', props.category.id)
+    .order('created_at', { ascending: false })
+  savedExercises.value = (data ?? []).map(dbRowToExercise)
+}
+
+async function persistGeneratedExercise(problem, unitTests) {
+  if (!user.value) return null
+  // Ensure the profile row exists — a no-op if it's already there, but guards
+  // against the trigger missing in local dev (e.g. DB recreated after first login).
+  await supabase.rpc('ensure_profile')
+  const { data, error } = await supabase
+    .from('generated_exercises')
+    .insert({
+      user_id:      user.value.id,
+      category_id:  props.category.id,
+      title:        problem.title,
+      description:  problem.description,
+      examples:     problem.examples,
+      constraints:  problem.constraints,
+      starter_code: problem.starterCode,
+      unit_tests:   unitTests,
+      difficulty:   difficultyGuess.value,
+    })
+    .select('id')
+    .single()
+  if (error) {
+    console.warn('[persist] error code:', error.code, '— message:', error.message)
+    return null
+  }
+  return data.id
+}
+
+async function deleteGeneratedExercise(ex, event) {
+  event.stopPropagation()
+  if (!user.value) return
+  if (!confirm(`Delete "${ex.title}"?\nThis cannot be undone.`)) return
+  await supabase
+    .from('generated_exercises')
+    .delete()
+    .eq('id', ex.id)
+    .eq('user_id', user.value.id)
+  if (currentExerciseId.value === ex.id) {
+    currentExerciseId.value = null
+    panelMode.value = selectedExercise.value ? 'exercise' : 'empty'
+  }
+  savedExercises.value = savedExercises.value.filter(e => e.id !== ex.id)
+}
+
+// Auto-save editor code, debounced 1 s
+function scheduleSave() {
+  clearTimeout(_saveTimer)
+  _saveTimer = setTimeout(flushSave, 1000)
+}
+
+async function flushSave() {
+  clearTimeout(_saveTimer)
+  if (!user.value || !editorInstance || !currentExerciseId.value) return
+  const code = editorInstance.getValue()
+  await supabase
+    .from('user_solutions')
+    .upsert(
+      { user_id: user.value.id, generated_exercise_id: currentExerciseId.value, code, updated_at: new Date().toISOString() },
+      { onConflict: 'user_id,generated_exercise_id' }
+    )
+}
+
+async function loadSavedCode(exerciseId) {
+  if (!user.value) return null
+  const { data } = await supabase
+    .from('user_solutions')
+    .select('code')
+    .eq('user_id', user.value.id)
+    .eq('generated_exercise_id', exerciseId)
+    .maybeSingle()
+  return data?.code ?? null
+}
+
+async function openSavedExercise(ex) {
+  await flushSave()                         // persist any in-progress code first
+  selectedExercise.value = null             // deselect any base problem
+  currentExerciseId.value = ex.id
+  generatedProblem.value = ex
+  panelMode.value = 'generated'
+  testResults.value = []
+  expandedTest.value = null
+  const saved = await loadSavedCode(ex.id)
+  if (editorInstance) editorInstance.setValue(saved ?? ex.starterCode)
+}
+
+// Reload when user logs in/out
+watch(user, () => loadSavedExercises())
 
 // ── Generator ─────────────────────────────────────────────────────────────────
 
@@ -561,6 +721,9 @@ async function apiFetch(url, body) {
 }
 
 async function generate() {
+  await flushSave()           // persist any in-progress code before replacing
+  clearTimeout(_saveTimer)
+  currentExerciseId.value = null
   isGenerating.value = true
   generationError.value = null
   generatedProblem.value = null
@@ -587,14 +750,26 @@ async function generate() {
     const problem = await apiFetch('/api/review', { problem: draft })
 
     // Show reviewed problem; switch panel to generated view
-    generatedProblem.value = { ...problem, unitTests: '' }
+    generatedProblem.value = { ...problem, unitTests: '', difficulty: difficultyGuess.value }
     panelMode.value = 'generated'
     if (editorInstance) editorInstance.setValue(problem.starterCode)
 
     // Step 3 — generate unit tests
     generationStatus.value = 'writing tests'
     const { unitTests } = await apiFetch('/api/generate-tests', { problem })
-    generatedProblem.value = { ...problem, unitTests }
+    generatedProblem.value = { ...problem, unitTests, difficulty: difficultyGuess.value }
+
+    // Persist to DB and wire up autosave
+    console.log('[generate] saving to DB, user:', user.value?.id ?? '(not logged in)')
+    const savedId = await persistGeneratedExercise(problem, unitTests)
+    if (savedId) {
+      generatedProblem.value = { ...generatedProblem.value, id: savedId }
+      currentExerciseId.value = savedId
+      dbSaveError.value = null
+      await loadSavedExercises()
+    } else if (user.value) {
+      dbSaveError.value = 'Could not save — check browser console and ensure the DB migration has been applied in Supabase.'
+    }
   } catch (err) {
     generationError.value = err.message
     panelMode.value = selectedExercise.value ? 'exercise' : 'empty'
@@ -695,6 +870,8 @@ async function initEditor() {
       keybindings: [monacoRef.KeyMod.CtrlCmd | monacoRef.KeyCode.Enter],
       run: () => runCode(),
     })
+
+    editorInstance.onDidChangeModelContent(() => scheduleSave())
   } catch (err) {
     console.error('[editor] initialization failed:', err)
     editorError.value = `Editor failed to load: ${err.message}`
@@ -909,9 +1086,11 @@ function onResizeEnd() {
 
 ensureWorker()
 
-onMounted(() => initEditor())
+onMounted(() => { loadSavedExercises(); initEditor() })
 
 onBeforeUnmount(() => {
+  clearTimeout(_saveTimer)
+  flushSave()
   stopAnim()
   destroyEditor()
   document.removeEventListener('mousemove', onResizeMove)
@@ -1673,26 +1852,27 @@ onBeforeUnmount(() => {
   line-height: 1;
   user-select: none;
 }
-.hint-text {
+.hint-list {
+  list-style: none;
   margin: 0;
-  padding: 0.18rem 0.75rem 0.18rem 1.4rem;
+  padding: 0.15rem 0.75rem 0.15rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.hint-list li {
   font-size: 0.82rem;
   color: #8b949e;
-  line-height: 1.7;
+  line-height: 1.6;
+  padding-left: 1rem;
+  position: relative;
 }
-.hint-text::before {
-  content: '"';
-  font-family: 'Fira Code', 'SF Mono', monospace;
+.hint-list li::before {
+  content: '·';
+  position: absolute;
+  left: 0.2rem;
   color: #3d444d;
-  font-size: 0.88em;
-  margin-right: 0.08em;
-}
-.hint-text::after {
-  content: '"';
   font-family: 'Fira Code', 'SF Mono', monospace;
-  color: #3d444d;
-  font-size: 0.88em;
-  margin-left: 0.08em;
 }
 
 .detail-empty {
@@ -1835,6 +2015,99 @@ onBeforeUnmount(() => {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* ── Sidebar DB error ── */
+.sidebar-db-error {
+  display: flex;
+  gap: 0.4rem;
+  align-items: flex-start;
+  margin: 0.55rem 0.75rem 0;
+  padding: 0.45rem 0.6rem;
+  background: rgba(248,81,73,0.07);
+  border: 1px solid rgba(248,81,73,0.2);
+  border-radius: 6px;
+  font-size: 0.69rem;
+  color: #f0857a;
+  line-height: 1.4;
+}
+.db-error-icon {
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: #f85149;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+/* ── Saved generated exercises sidebar ── */
+.sidebar-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.9rem 0.2rem;
+  flex-shrink: 0;
+}
+.sidebar-divider::before,
+.sidebar-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #21262d;
+}
+.divider-label {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #3d444d;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.saved-ex-item {
+  padding: 0.55rem 0.9rem;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  border-bottom: 1px solid #0d1117;
+  transition: background 0.12s, border-left-color 0.12s;
+  user-select: none;
+}
+.saved-ex-item:hover { background: #161b22; }
+.saved-ex-item.is-active {
+  background: #161b22;
+  border-left-color: #a371f7;
+}
+
+.saved-ex-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.22rem;
+}
+
+.saved-ex-title {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #6e7681;
+  line-height: 1.35;
+}
+.saved-ex-item:hover .saved-ex-title,
+.saved-ex-item.is-active .saved-ex-title { color: #c9d1d9; }
+
+.saved-ex-delete {
+  background: none;
+  border: none;
+  color: #3d444d;
+  font-size: 0.58rem;
+  cursor: pointer;
+  padding: 0.1rem 0.25rem;
+  border-radius: 3px;
+  opacity: 0;
+  line-height: 1;
+  transition: color 0.15s, opacity 0.15s;
+}
+.saved-ex-item:hover .saved-ex-delete { opacity: 1; }
+.saved-ex-delete:hover { color: #f85149; }
 
 /* Responsive */
 @media (max-width: 900px) {
