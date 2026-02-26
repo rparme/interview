@@ -20,7 +20,11 @@
     <div class="main">
 
       <!-- LEFT: problem list sidebar -->
-      <div class="problems-sidebar" :style="{ width: sidebarWidth + 'px' }">
+      <div
+        class="problems-sidebar"
+        v-show="!isMobile || activeMobileTab === 'problems'"
+        :style="isMobile ? {} : { width: sidebarWidth + 'px' }"
+      >
         <div
           v-for="problem in sortedProblems"
           :key="problem.lc"
@@ -131,7 +135,7 @@
       </div>
 
       <!-- CENTER: editor -->
-      <div class="editor-area">
+      <div class="editor-area" v-show="!isMobile || activeMobileTab === 'editor'">
         <GeneratorBar
           :selected-for-a-i="selectedForAI"
           :selected-gen-for-a-i="selectedGenForAI"
@@ -234,32 +238,75 @@
       </div>
 
       <!-- RIGHT: detail panel (resizable) -->
-      <DetailPanel
-        :width="panelWidth"
-        :panel-mode="panelMode"
-        :generated-problem="generatedProblem"
-        :selected-exercise="selectedExercise"
-        :description-html="descriptionHtml"
-        :difficulty-guess="difficultyGuess"
-        :panel-anim-text="panelAnimText"
-        :generation-status="generationStatus"
-        :is-generating="isGenerating"
-        :is-generating-tests="isGeneratingTests"
-        :is-running="isRunning"
-        :show-tests="showTests"
-        :test-results="testResults"
-        :parsed-test-names="parsedTestNames"
-        :parsed-test-cases="parsedTestCases"
-        :all-tests-passing="allTestsPassing"
-        :expanded-test="expandedTest"
-        :test-result-for="testResultFor"
-        :format-test-name="formatTestName"
-        :test-source-for="testSourceFor"
-        @resize-start="onResizeStart"
-        @update:show-tests="showTests = $event"
-        @update:expanded-test="expandedTest = $event"
-      />
+      <div class="detail-panel-wrapper" v-show="!isMobile || activeMobileTab === 'details'">
+        <DetailPanel
+          :width="panelWidth"
+          :panel-mode="panelMode"
+          :generated-problem="generatedProblem"
+          :selected-exercise="selectedExercise"
+          :description-html="descriptionHtml"
+          :difficulty-guess="difficultyGuess"
+          :panel-anim-text="panelAnimText"
+          :generation-status="generationStatus"
+          :is-generating="isGenerating"
+          :is-generating-tests="isGeneratingTests"
+          :is-running="isRunning"
+          :show-tests="showTests"
+          :test-results="testResults"
+          :parsed-test-names="parsedTestNames"
+          :parsed-test-cases="parsedTestCases"
+          :all-tests-passing="allTestsPassing"
+          :expanded-test="expandedTest"
+          :test-result-for="testResultFor"
+          :format-test-name="formatTestName"
+          :test-source-for="testSourceFor"
+          @resize-start="onResizeStart"
+          @update:show-tests="showTests = $event"
+          @update:expanded-test="expandedTest = $event"
+        />
+      </div>
     </div>
+
+    <!-- Mobile bottom tab bar -->
+    <nav v-if="isMobile" class="mobile-tab-bar" aria-label="Section navigation">
+      <button
+        class="mob-tab"
+        :class="{ active: activeMobileTab === 'problems' }"
+        aria-label="Problems list"
+        @click="activeMobileTab = 'problems'"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/>
+          <line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/>
+          <line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+        <span>Problems</span>
+      </button>
+      <button
+        class="mob-tab"
+        :class="{ active: activeMobileTab === 'editor' }"
+        aria-label="Code editor"
+        @click="activeMobileTab = 'editor'"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>
+        </svg>
+        <span>Code</span>
+      </button>
+      <button
+        class="mob-tab"
+        :class="{ active: activeMobileTab === 'details' }"
+        aria-label="Problem details"
+        @click="activeMobileTab = 'details'"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"/>
+          <line x1="12" y1="16" x2="12" y2="12"/>
+          <line x1="12" y1="8" x2="12.01" y2="8"/>
+        </svg>
+        <span>Details</span>
+      </button>
+    </nav>
   </div>
 
   <ExercisePopup :problem="popupProblem" @close="closePopup" />
@@ -269,6 +316,7 @@
 import { ref, computed, watch, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { useAuth } from '../composables/useAuth.js'
 import { useResizePanels } from '../composables/useResizePanels.js'
+import { useMobile } from '../composables/useMobile.js'
 import GeneratorBar from './GeneratorBar.vue'
 import OutputPane from './OutputPane.vue'
 import DetailPanel from './DetailPanel.vue'
@@ -286,6 +334,8 @@ const props = defineProps({
 const emit = defineEmits(['back', 'toggle-done', 'open-auth'])
 
 const { user, isSubscribed } = useAuth()
+const { isMobile } = useMobile()
+const activeMobileTab = ref('editor')
 
 // ── Template refs ──
 const rootEl = ref(null)
@@ -324,6 +374,7 @@ const panelMode = ref('empty')
 function selectExercise(problem) {
   selectedExercise.value = problem
   if (panelMode.value !== 'generated') panelMode.value = 'exercise'
+  if (isMobile.value) activeMobileTab.value = 'details'
 }
 
 // ── Exercise popup ──
@@ -486,6 +537,7 @@ async function openSavedExercise(ex) {
   testResults.value = []
   expandedTest.value = null
   setEditorValue(savedCode ?? exercise.starterCode)
+  if (isMobile.value) activeMobileTab.value = 'details'
 }
 
 // ── Watchers ──
@@ -887,8 +939,85 @@ onBeforeUnmount(() => {
   background: rgba(248,81,73,0.06); padding: 1rem; text-align: center;
 }
 
-/* Responsive */
-@media (max-width: 650px) {
-  .problems-sidebar { min-width: 140px; }
+/* ── Mobile tab bar ── */
+.mobile-tab-bar {
+  display: flex;
+  height: 56px;
+  background: #161b22;
+  border-top: 1px solid #21262d;
+  flex-shrink: 0;
+  z-index: 10;
+}
+
+.mob-tab {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.2rem;
+  background: none;
+  border: none;
+  color: #6e7681;
+  font-family: inherit;
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  padding: 0.4rem;
+  transition: color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.mob-tab svg {
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.mob-tab:hover { color: #c9d1d9; }
+.mob-tab.active { color: #58a6ff; background: rgba(88, 166, 255, 0.06); }
+
+/* ── Mobile layout (≤ 768px) ── */
+@media (max-width: 768px) {
+  .topbar {
+    padding: 0 0.75rem;
+    gap: 0.6rem;
+  }
+
+  .progress-bar { display: none; }
+
+  /* Full-width sidebar when on problems tab */
+  .problems-sidebar {
+    width: 100%;
+    flex: 1;
+    min-width: 0;
+    border-right: none;
+  }
+
+  /* Editor area full-width */
+  .editor-area { min-width: 0; }
+
+  /* Detail panel wrapper fills full width */
+  .detail-panel-wrapper {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    display: flex;
+  }
+
+  /* Override inline width from panelWidth prop */
+  .detail-panel-wrapper :deep(.problem-panel) {
+    width: 100% !important;
+    flex: 1;
+  }
+
+  /* Hide resize handles (touch unfriendly) */
+  .sidebar-resize-handle { display: none; }
+
+  /* Ensure editor toolbar wraps on tiny screens */
+  .editor-toolbar { gap: 0.4rem; }
 }
 </style>

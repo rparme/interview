@@ -99,6 +99,7 @@
         @click="$emit('select', cat.id)"
         @keydown.enter="$emit('select', cat.id)"
         @keydown.space.prevent="$emit('select', cat.id)"
+        @touchend.prevent="$emit('select', cat.id)"
       >
         <!-- outer glow -->
         <circle
@@ -185,6 +186,37 @@
         >{{ catDone(cat) }}/{{ cat.problems.length }}</text>
       </g>
     </svg>
+
+    <!-- Mobile: category card grid (shown on small screens via CSS) -->
+    <div class="mobile-cats" role="list" :aria-label="`Interview patterns. ${totalDone} of ${totalProbs} problems solved.`">
+      <div class="mobile-progress-header">
+        <span class="mobile-progress-label">Overall Progress</span>
+        <span class="mobile-progress-count" style="color: #3fb950">{{ totalDone }} / {{ totalProbs }}</span>
+      </div>
+      <button
+        v-for="cat in categories"
+        :key="`m-${cat.id}`"
+        class="mobile-cat-card"
+        role="listitem"
+        :style="{ '--cat-color': cat.color }"
+        :aria-label="`${cat.name}: ${catDone(cat)} of ${cat.problems.length} done`"
+        @click="$emit('select', cat.id)"
+      >
+        <div class="mobile-cat-header">
+          <div class="mobile-cat-dot" :style="{ background: cat.color }" aria-hidden="true" />
+          <span class="mobile-cat-name">{{ cat.name }}</span>
+          <span class="mobile-cat-progress" :style="{ color: progressColor(cat) }">
+            {{ catDone(cat) }}/{{ cat.problems.length }}
+          </span>
+        </div>
+        <div class="mobile-cat-bar" aria-hidden="true">
+          <div
+            class="mobile-cat-fill"
+            :style="{ width: (cat.problems.length ? catDone(cat) / cat.problems.length * 100 : 0) + '%', background: cat.color }"
+          />
+        </div>
+      </button>
+    </div>
   </div>
 </template>
 
@@ -339,5 +371,114 @@ function arcOffset(i) {
 
 .category-node:hover .node-ring {
   opacity: 0.9;
+}
+
+/* ── Mobile card grid (≤ 768px) ── */
+.mobile-cats {
+  display: none;
+  flex-direction: column;
+  gap: 0.65rem;
+  padding: 0 1rem 1.5rem;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+}
+
+.mobile-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.15rem 0.1rem 0.4rem;
+  border-bottom: 1px solid #21262d;
+  margin-bottom: 0.2rem;
+}
+
+.mobile-progress-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #6e7681;
+}
+
+.mobile-progress-count {
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.mobile-cat-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-left: 3px solid var(--cat-color);
+  border-radius: 8px;
+  padding: 0.8rem 0.8rem 0.6rem;
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  color: inherit;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.mobile-cat-card:hover,
+.mobile-cat-card:active {
+  background: #21262d;
+}
+
+.mobile-cat-header {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.mobile-cat-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.mobile-cat-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #e6edf3;
+  flex: 1;
+  line-height: 1.3;
+}
+
+.mobile-cat-progress {
+  font-size: 0.7rem;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.mobile-cat-bar {
+  height: 2px;
+  background: #21262d;
+  border-radius: 1px;
+  overflow: hidden;
+}
+
+.mobile-cat-fill {
+  height: 100%;
+  border-radius: 1px;
+  transition: width 0.5s ease;
+}
+
+@media (max-width: 768px) {
+  .mindmap-svg { display: none; }
+  .mobile-cats { display: flex; }
+  .mindmap-view {
+    align-items: flex-start;
+    overflow-y: auto;
+    padding-top: 88px;
+    padding-bottom: 1.5rem;
+  }
+  .page-header { top: 1.25rem; }
 }
 </style>
