@@ -19,6 +19,7 @@
       :category="selectedCategory"
       @back="goBack"
       @toggle-done="onToggleDone"
+      @open-auth="showAuthModal = true"
     />
 
     <GlobalChip :done="totalDone" :total="totalProbs" />

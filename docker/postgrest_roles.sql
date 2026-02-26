@@ -28,7 +28,7 @@ grant select on public.profiles to authenticated;
 grant select, insert, delete on public.user_progress to authenticated;
 
 -- AI-generated exercises: authenticated users manage their own rows
-grant select, insert, delete on public.generated_exercises to authenticated;
+grant select, insert, update, delete on public.generated_exercises to authenticated;
 
 -- User solutions (editor code): authenticated users manage their own rows
 grant select, insert, update, delete on public.user_solutions to authenticated;

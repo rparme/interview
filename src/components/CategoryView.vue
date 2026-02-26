@@ -55,7 +55,7 @@
               title="Add as AI context"
               @click.stop="toggleAISelect(problem)"
             >
-              <span aria-hidden="true">✦</span>
+              <svg aria-hidden="true" width="8" height="8" viewBox="0 0 10 10" fill="currentColor"><path d="M5 0 L5.8 3.8 L9.5 3.8 L6.5 6.1 L7.6 10 L5 7.5 L2.4 10 L3.5 6.1 L0.5 3.8 L4.2 3.8 Z"/></svg>
             </div>
 
             <span class="badge" :class="`badge-${problem.difficulty}`">{{ problem.difficulty }}</span>
@@ -98,17 +98,44 @@
             v-for="ex in savedExercises"
             :key="ex.id"
             class="saved-ex-item"
-            :class="{ 'is-active': currentExerciseId === ex.id }"
+            :class="{
+              'is-active': currentExerciseId === ex.id,
+              done: ex.done,
+              checked: selectedGenForAI.has(ex.id),
+            }"
+            :style="selectedGenForAI.has(ex.id) ? { borderLeftColor: '#a371f7' } : {}"
             @click="openSavedExercise(ex)"
           >
             <div class="saved-ex-top">
-              <span class="badge" :class="`badge-${ex.difficulty}`">{{ ex.difficulty }}</span>
-              <button
-                class="saved-ex-delete"
-                title="Delete"
-                aria-label="Delete generated exercise"
-                @click.stop="deleteGeneratedExercise(ex, $event)"
-              >✕</button>
+              <div class="saved-ex-left">
+                <div
+                  class="item-ai-check"
+                  :class="{ active: selectedGenForAI.has(ex.id) }"
+                  title="Add as AI context"
+                  @click.stop="toggleGenAISelect(ex)"
+                >
+                  <svg aria-hidden="true" width="8" height="8" viewBox="0 0 10 10" fill="currentColor"><path d="M5 0 L5.8 3.8 L9.5 3.8 L6.5 6.1 L7.6 10 L5 7.5 L2.4 10 L3.5 6.1 L0.5 3.8 L4.2 3.8 Z"/></svg>
+                </div>
+                <span class="badge" :class="`badge-${ex.difficulty}`">{{ ex.difficulty }}</span>
+              </div>
+              <div class="saved-ex-right">
+                <button
+                  class="done-toggle"
+                  :class="{ 'is-done': ex.done }"
+                  :aria-label="ex.done ? 'Mark as not done' : 'Mark as done'"
+                  title="Mark as done"
+                  @click.stop="toggleGenDone(ex)"
+                >
+                  <span aria-hidden="true">{{ ex.done ? '✓' : '' }}</span>
+                </button>
+                <button
+                  v-if="isSubscribed"
+                  class="saved-ex-delete"
+                  title="Delete"
+                  aria-label="Delete generated exercise"
+                  @click.stop="deleteGeneratedExercise(ex, $event)"
+                >✕</button>
+              </div>
             </div>
             <span class="saved-ex-title">{{ ex.title }}</span>
           </div>
@@ -119,7 +146,7 @@
       <div class="editor-area">
 
         <!-- Generator bar -->
-        <div class="generator-bar">
+        <div class="generator-bar" :class="{ 'is-generating': isGenerating }">
           <div class="gen-chips">
             <span
               v-for="lc in selectedForAI"
@@ -130,24 +157,35 @@
               {{ problemByLc(lc)?.title }}
               <button class="chip-remove" @click="selectedForAI.delete(lc)" aria-label="Remove">✕</button>
             </span>
-            <span v-if="!selectedForAI.size" class="gen-hint">
+            <span
+              v-for="id in selectedGenForAI"
+              :key="id"
+              class="gen-chip"
+              :style="{ borderColor: category.color + '60', color: category.color }"
+            >
+              {{ savedExercises.find(e => e.id === id)?.title }}
+              <button class="chip-remove" @click="selectedGenForAI.delete(id)" aria-label="Remove">✕</button>
+            </span>
+            <span v-if="!selectedForAI.size && !selectedGenForAI.size" class="gen-hint">
               Optionally check problems as context →
             </span>
           </div>
           <div class="gen-controls">
-            <select v-model="businessField" class="business-select">
+            <select v-model="businessField" class="business-select" :disabled="generationBlocked">
               <option value="">No theme</option>
               <option v-for="field in BUSINESS_FIELDS" :key="field" :value="field">{{ field }}</option>
             </select>
             <button
               class="generate-btn"
-              :class="{ 'is-loading': isGenerating }"
-              :style="!isGenerating ? { borderColor: category.color + '80', color: category.color } : {}"
-              :disabled="isGenerating"
+              :class="{ 'is-loading': isGenerating, 'is-blocked': generationBlocked }"
+              :style="!isGenerating && !generationBlocked ? { borderColor: category.color + '80', color: category.color } : {}"
+              :disabled="isGenerating || generationBlocked"
+              :title="generationBlocked ? 'Subscribe to generate more exercises' : undefined"
               @click="generate"
             >
-              <span class="gen-prompt" aria-hidden="true">&gt;_</span>
+              <span class="gen-prompt" aria-hidden="true">{{ generationBlocked ? '🔒' : '&gt;_' }}</span>
               <span v-if="isGenerating">{{ generationStatus }}<span class="anim-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></span>
+              <span v-else-if="generationBlocked">subscribe to generate more</span>
               <span v-else>generate</span>
             </button>
           </div>
@@ -164,16 +202,20 @@
             Python 3
           </span>
           <div class="toolbar-actions">
-            <span v-if="!workerReady" class="loading-py">
+            <span v-if="isGenerating" class="loading-py">
+              <span class="spinner" aria-hidden="true" />
+              {{ isGeneratingTests ? 'Writing tests…' : 'Generating…' }}
+            </span>
+            <span v-else-if="!workerReady" class="loading-py">
               <span class="spinner" aria-hidden="true" />
               Loading Python…
             </span>
             <button
               class="run-btn"
-              :class="{ 'is-ready': workerReady && !isRunning }"
-              :style="workerReady && !isRunning ? { borderColor: category.color + '70', color: category.color } : {}"
-              :disabled="!workerReady || isRunning"
-              :title="workerReady ? 'Run (Ctrl+Enter)' : 'Waiting for Python…'"
+              :class="{ 'is-ready': workerReady && !isRunning && !isGenerating }"
+              :style="workerReady && !isRunning && !isGenerating ? { borderColor: category.color + '70', color: category.color } : {}"
+              :disabled="!workerReady || isRunning || isGenerating"
+              :title="isGenerating ? 'Waiting for generation to finish…' : workerReady ? 'Run (Ctrl+Enter)' : 'Waiting for Python…'"
               @click="runCode"
             >
               <span aria-hidden="true">{{ isRunning ? '⟳' : '▶' }}</span>
@@ -183,7 +225,13 @@
         </div>
 
         <div v-if="editorError" class="editor-error">{{ editorError }}</div>
-        <div ref="editorEl" class="editor-container" :style="editorError ? { display: 'none' } : {}" />
+        <div class="editor-wrap">
+          <div ref="editorEl" class="editor-container" :style="editorError ? { display: 'none' } : {}" />
+          <div v-if="isGeneratingTests" class="editor-disabled-overlay">
+            <span class="spinner" aria-hidden="true" />
+            writing tests…
+          </div>
+        </div>
 
         <div class="output-pane" :style="{ height: outputHeight + 'px' }">
           <!-- Horizontal resize handle at top edge -->
@@ -471,9 +519,9 @@ const props = defineProps({
   category: { type: Object, required: true },
 })
 
-defineEmits(['back', 'toggle-done'])
+const emit = defineEmits(['back', 'toggle-done', 'open-auth'])
 
-const { user } = useAuth()
+const { user, isSubscribed } = useAuth()
 
 // ── Problem list ──────────────────────────────────────────────────────────────
 
@@ -484,8 +532,13 @@ const sortedProblems = computed(() =>
   )
 )
 
-const doneCnt  = computed(() => props.category.problems.filter(p => p.done).length)
-const totalCnt = computed(() => props.category.problems.length)
+const doneCnt  = computed(() =>
+  props.category.problems.filter(p => p.done).length +
+  savedExercises.value.filter(e => e.done).length
+)
+const totalCnt = computed(() =>
+  props.category.problems.length + savedExercises.value.length
+)
 const pct      = computed(() => Math.round((doneCnt.value / totalCnt.value) * 100))
 
 function problemByLc(lc) {
@@ -495,12 +548,34 @@ function problemByLc(lc) {
 // ── AI context selection ──────────────────────────────────────────────────────
 
 const selectedForAI = reactive(new Set())
+const selectedGenForAI = reactive(new Set())
 
 function toggleAISelect(problem) {
   if (selectedForAI.has(problem.lc)) {
     selectedForAI.delete(problem.lc)
   } else {
     selectedForAI.add(problem.lc)
+  }
+}
+
+function toggleGenAISelect(ex) {
+  if (selectedGenForAI.has(ex.id)) selectedGenForAI.delete(ex.id)
+  else selectedGenForAI.add(ex.id)
+}
+
+async function toggleGenDone(ex) {
+  if (!user.value) { emit('open-auth'); return }
+  const newDone = !ex.done
+  const idx = savedExercises.value.findIndex(e => e.id === ex.id)
+  if (idx !== -1) savedExercises.value[idx] = { ...savedExercises.value[idx], done: newDone }
+  const { error } = await supabase
+    .from('generated_exercises')
+    .update({ is_done: newDone })
+    .eq('id', ex.id)
+    .eq('user_id', user.value.id)
+  if (error) {
+    // Rollback optimistic update
+    if (idx !== -1) savedExercises.value[idx] = { ...savedExercises.value[idx], done: !newDone }
   }
 }
 
@@ -555,6 +630,7 @@ function dbRowToExercise(row) {
     starterCode: row.starter_code,
     unitTests:   row.unit_tests || '',
     difficulty:  row.difficulty,
+    done:        row.is_done ?? false,
   }
 }
 
@@ -598,7 +674,7 @@ async function persistGeneratedExercise(problem, unitTests) {
 
 async function deleteGeneratedExercise(ex, event) {
   event.stopPropagation()
-  if (!user.value) return
+  if (!user.value || !isSubscribed.value) return
   if (!confirm(`Delete "${ex.title}"?\nThis cannot be undone.`)) return
   await supabase
     .from('generated_exercises')
@@ -659,18 +735,18 @@ watch(user, () => loadSavedExercises())
 // ── Generator ─────────────────────────────────────────────────────────────────
 
 const BUSINESS_FIELDS = [
-  'Finance & Banking',
-  'Healthcare',
-  'E-commerce',
+  'AI / ML',
+  'Ad Tech',
+  'Search & Recommendations',
   'Social Media',
-  'Logistics & Supply Chain',
+  'Cloud & Infrastructure',
+  'E-commerce & Marketplace',
+  'Streaming & Media',
+  'Payments & Fintech',
+  'Ride-sharing & Maps',
+  'Messaging & Collaboration',
   'Gaming',
-  'EdTech',
-  'Cybersecurity',
-  'Real Estate',
-  'Travel & Hospitality',
-  'HR & Recruiting',
-  'Food Delivery',
+  'Developer Tools',
 ]
 
 const businessField     = ref('')
@@ -745,8 +821,12 @@ function stopAnim() {
 }
 
 // Auto-show tests as soon as they arrive
+watch(isGeneratingTests, (generating) => {
+  editorInstance?.updateOptions({ readOnly: generating })
+})
+
 watch(() => generatedProblem.value?.unitTests, (tests) => {
-  if (tests) showTests.value = true
+  if (tests) showTests.value = false
 })
 
 const difficultyGuess = computed(() => {
@@ -774,7 +854,17 @@ async function apiFetch(url, body) {
   return data
 }
 
+// True when the free tier limit (1 exercise per category) has been reached
+const generationBlocked = computed(() =>
+  !isSubscribed.value && savedExercises.value.length >= 1
+)
+
 async function generate() {
+  if (!user.value) { emit('open-auth'); return }
+  // Always refresh from DB so a failed persist on the previous run doesn't leave
+  // a stale zero count and allow unlimited generation.
+  await loadSavedExercises()
+  if (generationBlocked.value) return
   await flushSave()           // persist any in-progress code before replacing
   clearTimeout(_saveTimer)
   currentExerciseId.value = null
@@ -785,10 +875,10 @@ async function generate() {
   panelMode.value = 'loading'
   startAnim()
 
-  const selectedProblems = [...selectedForAI]
-    .map(lc => problemByLc(lc))
-    .filter(Boolean)
-    .map(({ title, difficulty }) => ({ title, difficulty }))
+  const selectedProblems = [
+    ...[...selectedForAI].map(lc => problemByLc(lc)).filter(Boolean).map(({ title, difficulty }) => ({ title, difficulty })),
+    ...[...selectedGenForAI].map(id => savedExercises.value.find(e => e.id === id)).filter(Boolean).map(({ title, difficulty }) => ({ title, difficulty })),
+  ]
 
   try {
     // Step 1 — generate problem draft
@@ -1227,7 +1317,8 @@ onBeforeUnmount(() => {
 }
 /* Applied during panel resize to prevent text-selection leaking into Monaco */
 .category-view.is-resizing { cursor: col-resize; user-select: none; }
-.category-view.is-resizing .editor-container { pointer-events: none; }
+.category-view.is-resizing .editor-container,
+.category-view.is-resizing .editor-wrap { pointer-events: none; }
 
 /* ── Top bar ── */
 .topbar {
@@ -1374,7 +1465,6 @@ onBeforeUnmount(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.55rem;
   color: transparent;
   flex-shrink: 0;
   transition: border-color 0.12s, background 0.12s, color 0.12s;
@@ -1384,7 +1474,8 @@ onBeforeUnmount(() => {
   background: rgba(163, 113, 247, 0.15);
   color: #a371f7;
 }
-.problem-item:hover .item-ai-check:not(.active) {
+.problem-item:hover .item-ai-check:not(.active),
+.saved-ex-item:hover .item-ai-check:not(.active) {
   border-color: #a371f7;
   border-style: solid;
   color: rgba(163, 113, 247, 0.4);
@@ -1447,6 +1538,11 @@ onBeforeUnmount(() => {
   background: #0d1117;
   flex-shrink: 0;
   flex-wrap: wrap;
+  position: relative;
+}
+.generator-bar.is-generating {
+  pointer-events: none;
+  opacity: 0.45;
 }
 
 .gen-chips {
@@ -1491,18 +1587,20 @@ onBeforeUnmount(() => {
 .gen-controls { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
 
 .business-select {
-  background: #161b22;
+  background: none;
   border: 1px solid #30363d;
   border-radius: 6px;
-  color: #8b949e;
+  color: #6e7681;
   font-size: 0.78rem;
-  font-family: inherit;
-  padding: 0.28rem 0.6rem;
+  font-weight: 500;
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  padding: 0.28rem 0.5rem 0.28rem 0.7rem;
   cursor: pointer;
   outline: none;
-  transition: border-color 0.15s;
+  transition: border-color 0.15s, color 0.15s;
 }
 .business-select:hover, .business-select:focus { border-color: #58a6ff; color: #c9d1d9; }
+.business-select option { background: #161b22; color: #c9d1d9; font-family: inherit; }
 
 .generate-btn {
   display: inline-flex;
@@ -1522,8 +1620,14 @@ onBeforeUnmount(() => {
   transition: border-color 0.15s, color 0.15s, background 0.15s;
 }
 .generate-btn:not(:disabled):hover { background: #161b22; }
-.generate-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.generate-btn:disabled:not(.is-blocked) { opacity: 0.5; cursor: not-allowed; }
 .generate-btn.is-loading { color: #6e7681; border-color: #30363d; }
+.generate-btn.is-blocked {
+  cursor: not-allowed;
+  color: #8b949e;
+  border-color: #30363d;
+  opacity: 0.85;
+}
 
 .gen-prompt {
   font-family: 'Fira Code', 'SF Mono', monospace;
@@ -1608,7 +1712,29 @@ onBeforeUnmount(() => {
 .run-btn.is-ready:hover { background: #161b22; }
 .run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.editor-wrap {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
 .editor-container { flex: 1; overflow: hidden; min-height: 0; }
+
+.editor-disabled-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(13, 17, 23, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  font-size: 0.78rem;
+  color: #6e7681;
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  pointer-events: all;
+  z-index: 5;
+}
 
 .editor-error {
   flex: 1;
@@ -1646,7 +1772,8 @@ onBeforeUnmount(() => {
   background: #58a6ff40;
 }
 .category-view.is-resizing-output { cursor: row-resize; user-select: none; }
-.category-view.is-resizing-output .editor-container { pointer-events: none; }
+.category-view.is-resizing-output .editor-container,
+.category-view.is-resizing-output .editor-wrap { pointer-events: none; }
 
 .output-header {
   display: flex;
@@ -2355,7 +2482,10 @@ onBeforeUnmount(() => {
   align-items: center;
   justify-content: space-between;
   margin-bottom: 0.22rem;
+  gap: 0.3rem;
 }
+.saved-ex-left { display: flex; align-items: center; gap: 0.3rem; }
+.saved-ex-right { display: flex; align-items: center; gap: 0.15rem; }
 
 .saved-ex-title {
   display: block;
@@ -2381,6 +2511,8 @@ onBeforeUnmount(() => {
 }
 .saved-ex-item:hover .saved-ex-delete { opacity: 1; }
 .saved-ex-delete:hover { color: #f85149; }
+.saved-ex-item.done { opacity: 0.55; }
+.saved-ex-item .done-toggle { opacity: 1; }
 
 /* Responsive */
 @media (max-width: 900px) {
