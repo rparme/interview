@@ -117,11 +117,14 @@ export function useProblemGeneration({
     return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]
   })
 
-  const freeExerciseLimit = Number(import.meta.env.VITE_FREE_EXERCISE_LIMIT) || 1
+  const _freeLimit = import.meta.env.VITE_FREE_EXERCISE_LIMIT
+  const freeExerciseLimit = _freeLimit !== undefined && _freeLimit !== '' ? Number(_freeLimit) : 1
 
-  const generationBlocked = computed(() =>
-    !isSubscribed.value && savedExercises.value.length >= freeExerciseLimit
-  )
+  const generationBlocked = computed(() => {
+    if (isSubscribed.value) return false
+    if (freeExerciseLimit === 0) return true
+    return savedExercises.value.length >= freeExerciseLimit
+  })
 
   // ── Animation ──
   const animFrame = ref(0)
