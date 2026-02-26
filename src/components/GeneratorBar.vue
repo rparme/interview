@@ -41,7 +41,7 @@
         :title="generationBlocked ? 'Subscribe to generate more exercises' : undefined"
         @click="$emit('generate')"
       >
-        <span class="gen-prompt" aria-hidden="true">{{ generationBlocked ? '🔒' : '&gt;_' }}</span>
+        <span class="gen-prompt" aria-hidden="true">{{ generationBlocked ? '⊘' : '&gt;_' }}</span>
         <span v-if="isGenerating">{{ generationStatus }}<span class="anim-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></span>
         <span v-else-if="generationBlocked">subscribe to generate more</span>
         <span v-else>generate</span>
@@ -84,9 +84,12 @@ defineEmits(['update:businessField', 'remove-ai-chip', 'remove-gen-chip', 'gener
   flex-wrap: wrap;
   position: relative;
 }
-.generator-bar.is-generating {
+.generator-bar.is-generating .gen-controls {
   pointer-events: none;
   opacity: 0.45;
+}
+.generator-bar.is-generating .gen-chips {
+  pointer-events: none;
 }
 
 .gen-chips {
@@ -126,14 +129,14 @@ defineEmits(['update:businessField', 'remove-ai-chip', 'remove-gen-chip', 'gener
 }
 .chip-remove:hover { opacity: 1; }
 
-.gen-hint { font-size: 0.75rem; color: #3d444d; font-style: italic; }
+.gen-hint { font-size: 0.75rem; color: #6e7681; font-style: italic; }
 
 .gen-controls { display: flex; align-items: center; gap: 0.6rem; flex-shrink: 0; }
 
 .business-select {
   background: none;
   border: 1px solid #30363d;
-  border-radius: 6px;
+  border-radius: 4px;
   color: #6e7681;
   font-size: 0.78rem;
   font-weight: 500;
@@ -153,7 +156,7 @@ defineEmits(['update:businessField', 'remove-ai-chip', 'remove-gen-chip', 'gener
   padding: 0.28rem 0.85rem 0.28rem 0.7rem;
   background: none;
   border: 1px solid #30363d;
-  border-radius: 6px;
+  border-radius: 4px;
   color: #6e7681;
   font-size: 0.78rem;
   font-weight: 500;
@@ -178,18 +181,6 @@ defineEmits(['update:businessField', 'remove-ai-chip', 'remove-gen-chip', 'gener
   font-size: 0.68rem;
   letter-spacing: -0.04em;
   opacity: 0.75;
-}
-
-.anim-dots {
-  display: inline-flex;
-  font-family: 'Fira Code', 'SF Mono', monospace;
-}
-.anim-dots span { opacity: 0.15; animation: dot-pulse 1.2s ease-in-out infinite; }
-.anim-dots span:nth-child(2) { animation-delay: 0.3s; }
-.anim-dots span:nth-child(3) { animation-delay: 0.6s; }
-@keyframes dot-pulse {
-  0%, 100% { opacity: 0.15; }
-  50%       { opacity: 1; }
 }
 
 .gen-error {

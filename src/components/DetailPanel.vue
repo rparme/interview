@@ -147,7 +147,7 @@
 
     <!-- ── Mode: empty ── -->
     <div v-else class="panel-empty">
-      <div class="empty-icon">✨</div>
+      <div class="empty-icon">◇</div>
       <p>Click an exercise to view details</p>
       <p class="empty-sub">Or generate an AI problem using the bar above the editor.</p>
     </div>
@@ -194,17 +194,33 @@ defineEmits(['resize-start', 'update:showTests', 'update:expandedTest'])
 
 .resize-handle {
   position: absolute;
-  left: 0;
+  left: -2px;
   top: 0;
   bottom: 0;
-  width: 5px;
+  width: 8px;
   cursor: col-resize;
   z-index: 10;
   transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.resize-handle::after {
+  content: '';
+  width: 2px;
+  height: 28px;
+  border-radius: 1px;
+  background: #30363d;
+  transition: background 0.15s, height 0.15s;
+}
+.resize-handle:hover::after,
+.resize-handle:active::after {
+  background: #58a6ff;
+  height: 40px;
 }
 .resize-handle:hover,
 .resize-handle:active {
-  background: rgba(88, 166, 255, 0.25);
+  background: rgba(88, 166, 255, 0.08);
 }
 
 .panel-topbar {
@@ -289,7 +305,7 @@ defineEmits(['resize-start', 'update:showTests', 'update:expandedTest'])
 .example-block {
   background: #161b22;
   border: 1px solid #21262d;
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 0.6rem 0.75rem;
   display: flex;
   flex-direction: column;
@@ -353,7 +369,7 @@ defineEmits(['resize-start', 'update:showTests', 'update:expandedTest'])
 .tests-preview {
   background: #0d1117;
   border: 1px solid #21262d;
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 0.65rem 0.75rem;
   font-family: 'Fira Code', 'SF Mono', monospace;
   font-size: 0.72rem;
@@ -382,7 +398,7 @@ defineEmits(['resize-start', 'update:showTests', 'update:expandedTest'])
   color: #8b949e;
   background: #0d1117;
   border: 1px solid #21262d;
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 0.85rem 1rem;
   margin: 0;
   white-space: pre;
@@ -395,18 +411,6 @@ defineEmits(['resize-start', 'update:showTests', 'update:expandedTest'])
   font-size: 0.72rem;
   color: #3d444d;
   letter-spacing: 0.03em;
-}
-
-.anim-dots {
-  display: inline-flex;
-  font-family: 'Fira Code', 'SF Mono', monospace;
-}
-.anim-dots span { opacity: 0.15; animation: dot-pulse 1.2s ease-in-out infinite; }
-.anim-dots span:nth-child(2) { animation-delay: 0.3s; }
-.anim-dots span:nth-child(3) { animation-delay: 0.6s; }
-@keyframes dot-pulse {
-  0%, 100% { opacity: 0.15; }
-  50%       { opacity: 1; }
 }
 
 /* Unit tests */
@@ -467,7 +471,7 @@ defineEmits(['resize-start', 'update:showTests', 'update:expandedTest'])
 .test-item {
   background: #161b22;
   border: 1px solid #21262d;
-  border-radius: 6px;
+  border-radius: 4px;
   padding: 0.42rem 0.6rem;
   cursor: pointer;
   transition: border-color 0.18s, background 0.18s;
@@ -562,7 +566,7 @@ defineEmits(['resize-start', 'update:showTests', 'update:expandedTest'])
   padding: 0.5rem 0.65rem;
   background: #0d1117;
   border: 1px solid #21262d;
-  border-radius: 5px;
+  border-radius: 4px;
   font-family: 'Fira Code', 'SF Mono', monospace;
   font-size: 0.72rem;
   line-height: 1.6;
@@ -590,7 +594,7 @@ defineEmits(['resize-start', 'update:showTests', 'update:expandedTest'])
   align-items: center;
   gap: 0.45rem;
   padding: 0.45rem 0.85rem;
-  border-radius: 8px;
+  border-radius: 4px;
   font-size: 0.8rem;
   font-weight: 600;
   text-decoration: none;
@@ -612,13 +616,13 @@ defineEmits(['resize-start', 'update:showTests', 'update:expandedTest'])
 .hint-block {
   background: rgba(255,255,255,0.015);
   border: 1px solid #21262d;
-  border-radius: 6px;
+  border-radius: 4px;
   overflow: hidden;
 }
 .hint-block::before {
-  content: '[';
+  content: '┌';
   display: block;
-  padding: 0.55rem 0.75rem 0;
+  padding: 0.4rem 0.75rem 0;
   font-family: 'Fira Code', 'SF Mono', monospace;
   font-size: 0.72rem;
   color: #3d444d;
@@ -626,9 +630,9 @@ defineEmits(['resize-start', 'update:showTests', 'update:expandedTest'])
   user-select: none;
 }
 .hint-block::after {
-  content: ']';
+  content: '└';
   display: block;
-  padding: 0 0.75rem 0.55rem;
+  padding: 0 0.75rem 0.4rem;
   font-family: 'Fira Code', 'SF Mono', monospace;
   font-size: 0.72rem;
   color: #3d444d;

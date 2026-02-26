@@ -1,3 +1,21 @@
+:root {
+  --bg-root:    #0d1117;
+  --bg-panel:   #161b22;
+  --bg-surface: #21262d;
+  --bg-border:  #30363d;
+  --text-1:     #e6edf3;
+  --text-2:     #c9d1d9;
+  --text-3:     #8b949e;
+  --text-4:     #6e7681;
+  --text-5:     #484f58;
+  --text-6:     #3d444d;
+  --accent:     #58a6ff;
+  --green:      #3fb950;
+  --red:        #f85149;
+  --amber:      #e5c07b;
+  --purple:     #a371f7;
+}
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -9,9 +27,22 @@ html, body, #app {
 }
 
 body {
-  background: #0d1117;
-  color: #e6edf3;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-root);
+  color: var(--text-1);
+  font-family: 'Fira Code', 'SF Mono', 'Cascadia Code', 'Cascadia Mono', monospace;
   min-height: 100vh;
   overflow-x: hidden;
+}
+
+/* ── Shared animation utilities ── */
+.anim-dots {
+  display: inline-flex;
+  font-family: 'Fira Code', 'SF Mono', monospace;
+}
+.anim-dots span { opacity: 0.15; animation: dot-pulse 1.2s ease-in-out infinite; }
+.anim-dots span:nth-child(2) { animation-delay: 0.3s; }
+.anim-dots span:nth-child(3) { animation-delay: 0.6s; }
+@keyframes dot-pulse {
+  0%, 100% { opacity: 0.15; }
+  50%       { opacity: 1; }
 }

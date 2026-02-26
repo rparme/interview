@@ -4,15 +4,17 @@ import { useAuth } from './useAuth.js'
 
 function dbRowToExercise(row) {
   return {
-    id:          row.id,
-    title:       row.title,
-    description: row.description,
-    examples:    row.examples,
-    constraints: row.constraints,
-    starterCode: row.starter_code,
-    unitTests:   row.unit_tests || '',
-    difficulty:  row.difficulty,
-    done:        row.is_done ?? false,
+    id:                  row.id,
+    title:               row.title,
+    description:         row.description,
+    examples:            row.examples,
+    constraints:         row.constraints,
+    starterCode:         row.starter_code,
+    unitTests:           row.unit_tests || '',
+    difficulty:          row.difficulty,
+    done:                row.is_done ?? false,
+    solutionCode:        row.solution_code || '',
+    solutionExplanation: row.solution_explanation || '',
   }
 }
 
@@ -35,21 +37,23 @@ export function useSavedExercises({ getCategoryId, openAuth, getEditorValue }) {
     savedExercises.value = (data ?? []).map(dbRowToExercise)
   }
 
-  async function persistGeneratedExercise(problem, unitTests, difficulty) {
+  async function persistGeneratedExercise(problem, unitTests, difficulty, solutionCode, solutionExplanation) {
     if (!user.value) return null
     await supabase.rpc('ensure_profile')
     const { data, error } = await supabase
       .from('generated_exercises')
       .insert({
-        user_id:      user.value.id,
-        category_id:  getCategoryId(),
-        title:        problem.title,
-        description:  problem.description,
-        examples:     problem.examples,
-        constraints:  problem.constraints,
-        starter_code: problem.starterCode,
-        unit_tests:   unitTests,
+        user_id:               user.value.id,
+        category_id:           getCategoryId(),
+        title:                 problem.title,
+        description:           problem.description,
+        examples:              problem.examples,
+        constraints:           problem.constraints,
+        starter_code:          problem.starterCode,
+        unit_tests:            unitTests,
         difficulty,
+        solution_code:         solutionCode || '',
+        solution_explanation:  solutionExplanation || '',
       })
       .select('id')
       .single()

@@ -87,7 +87,7 @@ onUnmounted(() => document.removeEventListener('click', onOutsideClick))
   padding: 0.45rem 1rem;
   background: #238636;
   border: 1px solid #2ea043;
-  border-radius: 8px;
+  border-radius: 4px;
   color: #fff;
   font-size: 0.85rem;
   font-weight: 600;
@@ -131,7 +131,7 @@ onUnmounted(() => document.removeEventListener('click', onOutsideClick))
   right: 0;
   background: #161b22;
   border: 1px solid #30363d;
-  border-radius: 10px;
+  border-radius: 4px;
   padding: 0.75rem;
   min-width: 200px;
   max-width: 200px;
@@ -151,33 +151,22 @@ onUnmounted(() => document.removeEventListener('click', onOutsideClick))
   max-width: 200px;
 }
 
-.dropdown-profile {
-  padding: 0.4rem 0.6rem;
-  background: none;
-  border: 1px solid #30363d;
-  border-radius: 6px;
-  color: #c9d1d9;
-  font-size: 0.82rem;
-  font-family: inherit;
-  cursor: pointer;
-  text-align: left;
-  transition: border-color 0.15s, color 0.15s;
-}
-.dropdown-profile:hover { border-color: #58a6ff; color: #58a6ff; }
-
+.dropdown-profile,
 .dropdown-signout {
   padding: 0.4rem 0.6rem;
   background: none;
-  border: 1px solid #30363d;
-  border-radius: 6px;
+  border: none;
+  border-radius: 4px;
   color: #c9d1d9;
   font-size: 0.82rem;
   font-family: inherit;
   cursor: pointer;
   text-align: left;
-  transition: border-color 0.15s, color 0.15s;
+  width: 100%;
+  transition: background 0.12s, color 0.12s;
 }
-.dropdown-signout:hover { border-color: #f85149; color: #f85149; }
+.dropdown-profile:hover { background: #21262d; color: #58a6ff; }
+.dropdown-signout:hover { background: rgba(248,81,73,0.08); color: #f85149; }
 
 .dropdown-enter-active, .dropdown-leave-active { transition: opacity 0.15s, transform 0.15s; }
 .dropdown-enter-from, .dropdown-leave-to { opacity: 0; transform: translateY(-4px); }

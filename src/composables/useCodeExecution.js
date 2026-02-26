@@ -196,6 +196,7 @@ print('__TEST_RESULTS__:' + _json.dumps(_results))
     expandedTest,
     showTests,
     runCode,
+    runPython,
     clearOutput,
     ensureWorker,
     testResultFor,

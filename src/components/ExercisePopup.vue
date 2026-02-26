@@ -80,7 +80,7 @@ defineEmits(['close'])
 .popup-card {
   background: #161b22;
   border: 1px solid #30363d;
-  border-radius: 12px;
+  border-radius: 4px;
   width: 100%;
   max-width: 500px;
   max-height: 80vh;
@@ -117,7 +117,7 @@ defineEmits(['close'])
   height: 26px;
   background: none;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 4px;
   color: #6e7681;
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s, background 0.15s;
@@ -169,7 +169,7 @@ defineEmits(['close'])
   align-items: center;
   gap: 0.45rem;
   padding: 0.45rem 0.85rem;
-  border-radius: 8px;
+  border-radius: 4px;
   font-size: 0.8rem;
   font-weight: 600;
   text-decoration: none;
@@ -191,13 +191,13 @@ defineEmits(['close'])
 .hint-block {
   background: rgba(255,255,255,0.015);
   border: 1px solid #21262d;
-  border-radius: 6px;
+  border-radius: 4px;
   overflow: hidden;
 }
 .hint-block::before {
-  content: '[';
+  content: '┌';
   display: block;
-  padding: 0.55rem 0.75rem 0;
+  padding: 0.4rem 0.75rem 0;
   font-family: 'Fira Code', 'SF Mono', monospace;
   font-size: 0.72rem;
   color: #3d444d;
@@ -205,9 +205,9 @@ defineEmits(['close'])
   user-select: none;
 }
 .hint-block::after {
-  content: ']';
+  content: '└';
   display: block;
-  padding: 0 0.75rem 0.55rem;
+  padding: 0 0.75rem 0.4rem;
   font-family: 'Fira Code', 'SF Mono', monospace;
   font-size: 0.72rem;
   color: #3d444d;

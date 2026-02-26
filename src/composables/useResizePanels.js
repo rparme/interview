@@ -3,6 +3,7 @@ import { ref } from 'vue'
 export function useResizePanels(rootEl) {
   const panelWidth = ref(320)
   const outputHeight = ref(170)
+  const sidebarWidth = ref(240)
 
   // ── Panel (right side) resize ──
   let isResizing = false
@@ -28,6 +29,33 @@ export function useResizePanels(rootEl) {
     resizeStartWidth = panelWidth.value
     document.addEventListener('mousemove', onResizeMove)
     document.addEventListener('mouseup', onResizeEnd)
+    rootEl.value?.classList.add('is-resizing')
+  }
+
+  // ── Sidebar (left side) resize ──
+  let isSidebarResizing = false
+  let sidebarResizeStartX = 0
+  let sidebarResizeStartWidth = 0
+
+  function onSidebarResizeMove(e) {
+    if (!isSidebarResizing) return
+    const delta = e.clientX - sidebarResizeStartX
+    sidebarWidth.value = Math.max(160, Math.min(400, sidebarResizeStartWidth + delta))
+  }
+
+  function onSidebarResizeEnd() {
+    isSidebarResizing = false
+    document.removeEventListener('mousemove', onSidebarResizeMove)
+    document.removeEventListener('mouseup', onSidebarResizeEnd)
+    rootEl.value?.classList.remove('is-resizing')
+  }
+
+  function onSidebarResizeStart(e) {
+    isSidebarResizing = true
+    sidebarResizeStartX = e.clientX
+    sidebarResizeStartWidth = sidebarWidth.value
+    document.addEventListener('mousemove', onSidebarResizeMove)
+    document.addEventListener('mouseup', onSidebarResizeEnd)
     rootEl.value?.classList.add('is-resizing')
   }
 
@@ -61,6 +89,8 @@ export function useResizePanels(rootEl) {
   function cleanupResize() {
     document.removeEventListener('mousemove', onResizeMove)
     document.removeEventListener('mouseup', onResizeEnd)
+    document.removeEventListener('mousemove', onSidebarResizeMove)
+    document.removeEventListener('mouseup', onSidebarResizeEnd)
     document.removeEventListener('mousemove', onOutputResizeMove)
     document.removeEventListener('mouseup', onOutputResizeEnd)
   }
@@ -68,7 +98,9 @@ export function useResizePanels(rootEl) {
   return {
     panelWidth,
     outputHeight,
+    sidebarWidth,
     onResizeStart,
+    onSidebarResizeStart,
     onOutputResizeStart,
     cleanupResize,
   }

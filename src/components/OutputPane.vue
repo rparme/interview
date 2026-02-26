@@ -3,13 +3,13 @@
     <!-- Horizontal resize handle at top edge -->
     <div class="output-resize-handle" @mousedown.prevent="$emit('resize-start', $event)" />
 
-    <!-- Plain header when no tests ran -->
-    <div v-if="!testResults.length" class="output-header">
+    <!-- Plain header when no tests ran and no complexity state -->
+    <div v-if="!testResults.length && !analysisResult && !analysisError && !isAnalyzing" class="output-header">
       <span>Output</span>
       <button v-if="output" class="clear-btn" @click="$emit('clear')">Clear</button>
     </div>
 
-    <!-- Tab bar when tests ran -->
+    <!-- Tab bar when tests ran or complexity active -->
     <div v-else class="output-tabs">
       <div class="output-tabs-scroll" @wheel.prevent="e => e.currentTarget.scrollLeft += e.deltaY">
         <button
@@ -25,8 +25,24 @@
           :class="[{ 'out-tab-active': activeTestTab === r.name }, `out-tab-${r.status}`]"
           @click="$emit('update:activeTestTab', r.name)"
         >
-          <span class="out-tab-dot" />
+          <span class="out-tab-indicator">{{ r.status === 'pass' ? '✓' : r.status === 'fail' || r.status === 'error' ? '✗' : '·' }}</span>
           {{ r.name }}
+        </button>
+        <button
+          v-if="analysisResult || analysisError || isAnalyzing"
+          class="out-tab complexity-tab"
+          :class="{ 'out-tab-active': activeTestTab === '__complexity__' }"
+          @click="$emit('select-complexity')"
+        >
+          <span
+            class="out-tab-dot"
+            :class="{
+              'complexity-dot-analyzing': isAnalyzing,
+              'complexity-dot-done':     analysisResult && !isAnalyzing,
+              'complexity-dot-error':    analysisError  && !isAnalyzing,
+            }"
+          />
+          <span class="complexity-tab-label">∑ cmplx</span>
         </button>
       </div>
       <button class="clear-btn tabs-clear-btn" @click="$emit('clear')">Clear</button>
@@ -34,7 +50,37 @@
 
     <!-- Content -->
     <div class="output-scroll">
-      <template v-if="testResults.length">
+      <!-- Complexity tab content -->
+      <template v-if="activeTestTab === '__complexity__'">
+        <!-- Loading -->
+        <div v-if="isAnalyzing" class="complexity-loading">
+          <span class="complexity-spinner-ring" aria-hidden="true" />
+          <span class="complexity-loading-text">analyzing…</span>
+        </div>
+
+        <!-- Result -->
+        <div v-else-if="analysisResult" class="tab-body">
+          <div class="complexity-metrics">
+            <div class="complexity-metric">
+              <span class="complexity-metric-key">time</span>
+              <code class="complexity-metric-val">{{ analysisResult.timeComplexity }}</code>
+            </div>
+            <div class="complexity-metric-sep" aria-hidden="true" />
+            <div class="complexity-metric">
+              <span class="complexity-metric-key">space</span>
+              <code class="complexity-metric-val">{{ analysisResult.spaceComplexity }}</code>
+            </div>
+          </div>
+          <pre class="output-content complexity-explanation">{{ analysisResult.explanation }}</pre>
+        </div>
+
+        <!-- Error -->
+        <div v-else-if="analysisError" class="complexity-error">
+          <span class="complexity-error-glyph" aria-hidden="true">✕</span>
+          <pre class="complexity-error-msg">{{ analysisError }}</pre>
+        </div>
+      </template>
+      <template v-else-if="testResults.length">
         <pre v-if="activeTestTab === '__console__'" class="output-content" :class="{ 'has-error': hasError }">{{ output.trimEnd() || '(no output)' }}</pre>
         <template v-for="r in testResults" :key="r.name">
           <div v-if="activeTestTab === r.name" class="tab-body">
@@ -64,9 +110,12 @@ defineProps({
   testResults:    { type: Array, default: () => [] },
   activeTestTab:  { type: String, default: null },
   parsedTestCases:{ type: Object, default: () => ({}) },
+  analysisResult: { type: Object, default: null },
+  analysisError:  { type: String, default: null },
+  isAnalyzing:    { type: Boolean, default: false },
 })
 
-defineEmits(['resize-start', 'update:activeTestTab', 'clear'])
+defineEmits(['resize-start', 'update:activeTestTab', 'clear', 'select-complexity'])
 </script>
 
 <style scoped>
@@ -80,15 +129,33 @@ defineEmits(['resize-start', 'update:activeTestTab', 'clear'])
 
 .output-resize-handle {
   position: absolute;
-  top: -3px;
+  top: -4px;
   left: 0;
   right: 0;
-  height: 6px;
+  height: 8px;
   cursor: row-resize;
   z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
 }
-.output-resize-handle:hover {
-  background: #58a6ff40;
+.output-resize-handle::after {
+  content: '';
+  height: 2px;
+  width: 28px;
+  border-radius: 1px;
+  background: #30363d;
+  transition: background 0.15s, width 0.15s;
+}
+.output-resize-handle:hover::after,
+.output-resize-handle:active::after {
+  background: #58a6ff;
+  width: 40px;
+}
+.output-resize-handle:hover,
+.output-resize-handle:active {
+  background: rgba(88, 166, 255, 0.08);
 }
 
 .output-header {
@@ -192,9 +259,15 @@ defineEmits(['resize-start', 'update:activeTestTab', 'clear'])
   background: #484f58;
   flex-shrink: 0;
 }
-.out-tab-pass .out-tab-dot { background: #3fb950; }
-.out-tab-fail .out-tab-dot,
-.out-tab-error .out-tab-dot { background: #f85149; }
+.out-tab-indicator {
+  font-size: 0.6rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  color: #484f58;
+}
+.out-tab-pass .out-tab-indicator { color: #3fb950; }
+.out-tab-fail .out-tab-indicator,
+.out-tab-error .out-tab-indicator { color: #f85149; }
 
 .tabs-clear-btn {
   flex-shrink: 0;
@@ -238,5 +311,134 @@ defineEmits(['resize-start', 'update:activeTestTab', 'clear'])
   font-size: 0.75rem;
   font-style: italic;
   font-family: 'Fira Code', 'SF Mono', monospace;
+}
+
+/* ── Complexity tab dot states ── */
+.complexity-dot-analyzing {
+  background: #e5c07b !important;
+  animation: complexity-pulse 1s ease-in-out infinite;
+}
+.complexity-dot-done    { background: #e5c07b !important; }
+.complexity-dot-error   { background: #f85149 !important; }
+
+@keyframes complexity-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.35; }
+}
+
+/* Tab label in monospace, tighter */
+.complexity-tab-label {
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  font-size: 0.67rem;
+  letter-spacing: 0.02em;
+}
+
+/* ── Loading state ── */
+.complexity-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  color: #6e7681;
+  font-family: 'Fira Code', 'SF Mono', monospace;
+}
+
+.complexity-spinner-ring {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid #21262d;
+  border-top-color: #e5c07b;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+
+.complexity-loading-text {
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: #484f58;
+}
+
+/* ── Result metrics grid ── */
+.complexity-metrics {
+  display: flex;
+  align-items: stretch;
+  background: #161b22;
+  border-bottom: 1px solid #21262d;
+  flex-shrink: 0;
+}
+
+.complexity-metric {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  padding: 0.55rem 1rem;
+}
+
+.complexity-metric-sep {
+  width: 1px;
+  background: #21262d;
+  flex-shrink: 0;
+  margin: 0.4rem 0;
+}
+
+.complexity-metric-key {
+  font-size: 0.58rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #484f58;
+}
+
+.complexity-metric-val {
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  font-size: 0.92rem;
+  font-weight: 500;
+  color: #e5c07b;
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  line-height: 1.2;
+}
+
+/* ── Explanation block ── */
+.complexity-explanation {
+  border-left: 2px solid #21262d;
+  margin-left: 1rem;
+  padding-left: 0.85rem;
+  color: #8b949e;
+}
+
+/* ── Error state ── */
+.complexity-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem;
+  background: rgba(248, 81, 73, 0.06);
+  border: 1px solid rgba(248, 81, 73, 0.18);
+  border-radius: 4px;
+}
+
+.complexity-error-glyph {
+  font-size: 0.7rem;
+  color: #f85149;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+  font-family: 'Fira Code', 'SF Mono', monospace;
+}
+
+.complexity-error-msg {
+  margin: 0;
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  font-size: 0.76rem;
+  color: #f0857a;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.55;
 }
 </style>
