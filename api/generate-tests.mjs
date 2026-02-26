@@ -6,11 +6,11 @@ const UNIT_TEST_TOOL_SCHEMA = {
   properties: {
     unitTests: {
       type: 'string',
-      description: 'Complete Python unittest.TestCase subclass. Imports unittest at the top. Class TestSolution(unittest.TestCase) with test methods. Does NOT implement Solution. Ends with: if __name__ == "__main__": unittest.main(verbosity=2)',
+      description: 'Complete Python unittest.TestCase subclass with exactly 5-6 test methods. Imports unittest at the top. Class TestSolution(unittest.TestCase). Does NOT implement Solution. Ends with: if __name__ == "__main__": unittest.main(verbosity=2)',
     },
     testCases: {
       type: 'array',
-      description: 'One entry per test method — must match every def test_* in unitTests',
+      description: 'One entry per test method (5-6 entries) — must match every def test_* in unitTests',
       items: {
         type: 'object',
         properties: {
@@ -42,7 +42,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'problem (with title and starterCode) is required' })
   }
 
-  const systemPrompt = 'You are an expert Python developer. Write clean, minimal unittest code.'
+  const systemPrompt = 'You are an expert Python developer. Write clean, minimal unittest code. You MUST carefully compute the expected output for each test by mentally tracing the correct algorithm step by step. Double-check every expected value before writing the assertion.'
   const userPrompt = `Write Python unit tests for this problem.
 
 Problem: ${problem.title}
@@ -58,7 +58,9 @@ ${problem.examples.map((e, i) => `${i + 1}. Input: ${e.input} → Output: ${e.ou
 
 Rules:
 - Import unittest at the top
-- Class TestSolution(unittest.TestCase) with at least 2 test methods matching the examples above
+- Class TestSolution(unittest.TestCase) with exactly 5-6 test methods: include the given examples, then add 2-3 edge cases
+- Do NOT write more than 6 test methods — quality over quantity
+- For EACH test, mentally trace through the correct algorithm step by step and verify the expected value is correct BEFORE writing the assertion
 - Do NOT implement Solution — tests run alongside the user's code
 - End with: if __name__ == "__main__": unittest.main(verbosity=2)
 - In testCases, provide one entry per test method with the exact method name, the human-readable input, and expected output`

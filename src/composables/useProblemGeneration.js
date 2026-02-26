@@ -117,8 +117,10 @@ export function useProblemGeneration({
     return Object.entries(counts).sort((a, b) => b[1] - a[1])[0][0]
   })
 
+  const freeExerciseLimit = Number(import.meta.env.VITE_FREE_EXERCISE_LIMIT) || 1
+
   const generationBlocked = computed(() =>
-    !isSubscribed.value && savedExercises.value.length >= 1
+    !isSubscribed.value && savedExercises.value.length >= freeExerciseLimit
   )
 
   // ── Animation ──
@@ -209,11 +211,12 @@ export function useProblemGeneration({
       let currentTests = unitTests
       try {
         generationStatus.value = 'solving'
-        const problemText = `${problem.title}\n${problem.description}\n\nExamples:\n${problem.examples.map((e, i) => `${i + 1}. Input: ${e.input} → Output: ${e.output}`).join('\n')}\n\nConstraints:\n${problem.constraints.join('\n')}`
+        const problemText = `${problem.title}\n${problem.description}\n\nExamples:\n${problem.examples.map((e, i) => `${i + 1}. Input: ${e.input} → Output: ${e.output}`).join('\n')}\n\nConstraints:\n${problem.constraints.join('\n')}\n\nStarter code (exact method signature):\n${problem.starterCode}`
 
         const solution = await apiFetch('/api/generate-solution', {
           problem: problemText,
           unitTests: currentTests,
+          starterCode: problem.starterCode,
           category: getCategoryName(),
         })
         solutionCode = solution.code
@@ -222,16 +225,16 @@ export function useProblemGeneration({
         // Verify solution passes unit tests via Pyodide
         if (runPython) {
           const TEST_RUNNER = `
-import json as _json, unittest as _unittest, io as _io, contextlib as _ctx
+import json as _json, unittest as _unittest, io as _io, contextlib as _ctx, traceback as _tb
 class _R(_unittest.TestResult):
     def __init__(self):
         super().__init__(); self._r = []
     def addSuccess(self, t):
         self._r.append({'name': t._testMethodName, 'status': 'pass'})
     def addFailure(self, t, err):
-        self._r.append({'name': t._testMethodName, 'status': 'fail', 'message': str(err[1])})
+        self._r.append({'name': t._testMethodName, 'status': 'fail', 'message': ''.join(_tb.format_exception(*err))})
     def addError(self, t, err):
-        self._r.append({'name': t._testMethodName, 'status': 'error', 'message': str(err[1])})
+        self._r.append({'name': t._testMethodName, 'status': 'error', 'message': ''.join(_tb.format_exception(*err))})
 _results = []
 for _t in _unittest.TestLoader().loadTestsFromTestCase(TestSolution):
     _buf = _io.StringIO()
@@ -258,54 +261,75 @@ print('__TEST_RESULTS__:' + _json.dumps(_results))
             } catch { return { allPass: false, parsed: [] } }
           }
 
-          function collectErrorOutput(pyResult) {
+          function formatErrorOutput(pyResult) {
+            const { parsed } = checkResults(pyResult)
             const parts = []
-            if (pyResult.stderr) parts.push(pyResult.stderr)
-            if (pyResult.error) parts.push(pyResult.error)
-            const line = (pyResult.stdout || '').split('\n').find(l => l.startsWith('__TEST_RESULTS__:'))
-            if (line) parts.push(line)
+            if (pyResult.stderr) parts.push(`Runtime stderr:\n${pyResult.stderr}`)
+            if (pyResult.error) parts.push(`Execution error:\n${pyResult.error}`)
+            if (parsed.length) {
+              const summary = parsed.map(r => {
+                if (r.status === 'pass') return `  ✓ ${r.name}: PASS`
+                return `  ✗ ${r.name}: ${r.status.toUpperCase()}\n    ${(r.message || '(no message)').split('\n').join('\n    ')}`
+              }).join('\n')
+              parts.push(`Test results:\n${summary}`)
+            }
             if (!parts.length) parts.push((pyResult.stdout || '').slice(0, 500))
-            return parts.join('\n').slice(0, 1500)
+            return parts.join('\n\n').slice(0, 3000)
           }
 
-          generationStatus.value = 'verifying'
-          const testCode = stripMain(currentTests)
-          const result = await runPython(`${solutionCode}\n\n${testCode}\n${TEST_RUNNER}`)
-          let { allPass } = checkResults(result)
+          const MAX_DIAGNOSIS_ROUNDS = 3
+          let prevDiagnoses = []
 
-          // If verification fails, diagnose whether solution or tests are wrong
-          if (!allPass) {
-            console.warn('[generate] solution failed tests — diagnosing fault')
+          for (let round = 0; round <= MAX_DIAGNOSIS_ROUNDS; round++) {
+            generationStatus.value = 'verifying'
+            const testCode = stripMain(currentTests)
+            const pyResult = await runPython(`${solutionCode}\n\n${testCode}\n${TEST_RUNNER}`)
+            const { allPass } = checkResults(pyResult)
+
+            if (allPass) {
+              console.log(`[generate] verification passed (round ${round})`)
+              break
+            }
+
+            if (round === MAX_DIAGNOSIS_ROUNDS) {
+              console.warn(`[generate] still failing after ${MAX_DIAGNOSIS_ROUNDS} diagnosis rounds — saving best effort`)
+              break
+            }
+
+            console.warn(`[generate] verification failed (round ${round}) — diagnosing`)
             generationStatus.value = 'solving'
-            const errorOutput = collectErrorOutput(result)
+            const errorOutput = formatErrorOutput(pyResult)
 
-            const diagnosis = await apiFetch('/api/diagnose-failure', {
-              problem: problemText,
-              solutionCode,
-              unitTests: currentTests,
-              testOutput: errorOutput,
-              category: getCategoryName(),
-            })
+            let diagnosisHint = ''
+            if (prevDiagnoses.length) {
+              diagnosisHint = '\n\nPrevious fix attempts that STILL FAILED:\n' +
+                prevDiagnoses.map((d, i) => `Attempt ${i + 1}: blamed "${d.fault}" — ${d.reasoning}`).join('\n') +
+                '\nDo NOT repeat the same fix. Try the other side or a different approach.'
+            }
 
-            console.log(`[generate] diagnosis: fault=${diagnosis.fault}, reasoning: ${diagnosis.reasoning.slice(0, 80)}`)
+            let diagnosis
+            try {
+              diagnosis = await apiFetch('/api/diagnose-failure', {
+                problem: problemText,
+                solutionCode,
+                unitTests: currentTests,
+                testOutput: errorOutput + diagnosisHint,
+                category: getCategoryName(),
+              })
+            } catch (diagErr) {
+              console.warn(`[generate] diagnosis round ${round} failed: ${diagErr.message} — skipping`)
+              continue
+            }
+
+            console.log(`[generate] diagnosis round ${round}: fault=${diagnosis.fault}, reasoning: ${diagnosis.reasoning.slice(0, 80)}`)
+            prevDiagnoses.push({ fault: diagnosis.fault, reasoning: diagnosis.reasoning })
 
             if (diagnosis.fault === 'tests') {
-              // Tests were wrong — replace them
               currentTests = diagnosis.fixedCode
               generatedProblem.value = { ...generatedProblem.value, unitTests: currentTests }
             } else {
-              // Solution was wrong — replace it
               solutionCode = diagnosis.fixedCode
               if (diagnosis.fixedExplanation) solutionExplanation = diagnosis.fixedExplanation
-            }
-
-            // Re-verify after the fix
-            generationStatus.value = 'verifying'
-            const fixedTestCode = stripMain(currentTests)
-            const retryResult = await runPython(`${solutionCode}\n\n${fixedTestCode}\n${TEST_RUNNER}`)
-            const retryCheck = checkResults(retryResult)
-            if (!retryCheck.allPass) {
-              console.warn('[generate] still failing after diagnosis — saving best effort')
             }
           }
         }

@@ -92,9 +92,26 @@ Instructions:
           userPrompt: userPrompt + '\n\nRespond with valid JSON only: { "fault": "solution"|"tests", "reasoning": "...", "fixedCode": "...", "fixedExplanation": "..." }',
         })
 
-    const result = DiagnosisSchema.safeParse(raw)
+    console.log('[diagnose-failure] raw keys:', Object.keys(raw), 'fault:', raw.fault ?? raw.Fault ?? '(missing)')
+
+    // Normalize: the AI sometimes uses snake_case, different casing, or nests the response
+    const normalized = {
+      fault: raw.fault ?? raw.Fault,
+      reasoning: raw.reasoning ?? raw.Reasoning ?? raw.explanation ?? '',
+      fixedCode: raw.fixedCode ?? raw.fixed_code ?? raw.correctedCode ?? raw.corrected_code ?? raw.code ?? '',
+      fixedExplanation: raw.fixedExplanation ?? raw.fixed_explanation ?? raw.correctedExplanation ?? '',
+    }
+
+    // Normalize fault value
+    if (typeof normalized.fault === 'string') {
+      const f = normalized.fault.toLowerCase().trim()
+      if (f.includes('test')) normalized.fault = 'tests'
+      else if (f.includes('solution') || f.includes('code')) normalized.fault = 'solution'
+    }
+
+    const result = DiagnosisSchema.safeParse(normalized)
     if (!result.success) {
-      console.error('[diagnose-failure] schema mismatch:', result.error.issues)
+      console.error('[diagnose-failure] schema mismatch after normalization:', result.error.issues, 'raw:', JSON.stringify(raw).slice(0, 500))
       return res.status(502).json({ error: 'Diagnosis schema mismatch', detail: result.error.issues })
     }
 

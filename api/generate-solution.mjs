@@ -22,7 +22,7 @@ export default async function handler(req, res) {
   try { provider = resolveProvider() }
   catch (err) { return res.status(500).json({ error: err.message }) }
 
-  const { problem, unitTests, category, retryError } = req.body ?? {}
+  const { problem, unitTests, starterCode, category, retryError } = req.body ?? {}
   if (!problem) return res.status(400).json({ error: 'problem is required' })
   if (!unitTests) return res.status(400).json({ error: 'unitTests is required' })
 
@@ -30,13 +30,18 @@ export default async function handler(req, res) {
     ? `\nThis is a "${category}" problem — the optimal solution should use ${category} techniques. Choose the idiomatic algorithm for this category.`
     : ''
 
-  const systemPrompt = 'You are an expert Python engineer. Write the most optimal solution for the given coding problem. Include inline comments explaining key steps. The code MUST pass the provided unit tests.'
+  const starterHint = starterCode
+    ? `\nStarter code (you MUST use this exact class and method signature):\n\`\`\`python\n${starterCode}\n\`\`\``
+    : ''
+
+  const systemPrompt = 'You are an expert Python engineer. Write the most optimal solution for the given coding problem. You MUST use the exact class name and method signature from the starter code. Include inline comments explaining key steps. The code MUST pass the provided unit tests.'
 
   let userPrompt = `Write the optimal Python solution for this problem.
 ${categoryHint}
 
 Problem:
 ${problem}
+${starterHint}
 
 Unit tests the solution must pass:
 \`\`\`python
@@ -44,10 +49,11 @@ ${unitTests}
 \`\`\`
 
 Requirements:
-- Complete Python \`class Solution\` with the correct method signature
+- Use the EXACT class and method signature from the starter code above — do not rename the class or method
 - Most optimal time and space complexity possible using ${category || 'appropriate'} techniques
 - Include brief inline comments for key steps
-- The code must pass ALL the provided unit tests`
+- The code must pass ALL the provided unit tests
+- Output ONLY the class — no imports unless necessary (unittest is handled separately)`
 
   if (retryError) {
     userPrompt += `\n\nPrevious attempt FAILED with this error:\n\`\`\`\n${retryError}\n\`\`\`\nFix the solution so all tests pass.`
@@ -60,9 +66,15 @@ Requirements:
       ? await callAnthropic(provider.key, { systemPrompt, userPrompt, toolName: 'generate_solution', toolDescription: 'Generate an optimal Python solution for a coding problem', inputSchema: SOLUTION_TOOL_SCHEMA })
       : await callOpenRouter(provider.key, { systemPrompt, userPrompt: userPrompt + '\n\nRespond with valid JSON only: { "code": "...", "explanation": "..." }' })
 
-    const result = SolutionSchema.safeParse(raw)
+    // Normalize: AI sometimes uses snake_case or different key names
+    const normalized = {
+      code: raw.code ?? raw.solution ?? raw.solution_code ?? '',
+      explanation: raw.explanation ?? raw.Explanation ?? raw.approach ?? '',
+    }
+
+    const result = SolutionSchema.safeParse(normalized)
     if (!result.success) {
-      console.error('[generate-solution] schema mismatch:', result.error.issues)
+      console.error('[generate-solution] schema mismatch:', result.error.issues, 'raw keys:', Object.keys(raw))
       return res.status(502).json({ error: 'Solution schema mismatch', detail: result.error.issues })
     }
 
