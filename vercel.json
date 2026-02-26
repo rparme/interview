@@ -1,0 +1,12 @@
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/generate.mjs": { "maxDuration": 60 },
+    "api/review.mjs": { "maxDuration": 60 },
+    "api/generate-tests.mjs": { "maxDuration": 60 },
+    "api/generate-solution.mjs": { "maxDuration": 60 },
+    "api/diagnose-failure.mjs": { "maxDuration": 60 },
+    "api/analyze-complexity.mjs": { "maxDuration": 60 }
+  }
+}

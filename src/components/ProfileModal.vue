@@ -146,7 +146,7 @@ async function handleSubmit() {
 .modal {
   background: #161b22;
   border: 1px solid #30363d;
-  border-radius: 14px;
+  border-radius: 4px;
   padding: 1.75rem;
   width: 100%;
   max-width: 400px;
@@ -179,7 +179,7 @@ async function handleSubmit() {
   cursor: pointer;
   font-size: 1rem;
   padding: 0.2rem 0.45rem;
-  border-radius: 6px;
+  border-radius: 4px;
   transition: color 0.15s, background 0.15s;
 }
 .close-btn:hover { color: #e6edf3; background: #21262d; }
@@ -272,7 +272,7 @@ async function handleSubmit() {
 .field-input {
   background: #0d1117;
   border: 1px solid #30363d;
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 0.6rem 0.75rem;
   color: #e6edf3;
   font-size: 0.875rem;
@@ -293,7 +293,7 @@ async function handleSubmit() {
   padding: 0.65rem;
   background: #238636;
   border: 1px solid #2ea043;
-  border-radius: 8px;
+  border-radius: 4px;
   color: #fff;
   font-size: 0.875rem;
   font-weight: 600;

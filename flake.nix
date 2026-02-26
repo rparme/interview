@@ -47,6 +47,11 @@
           if ! command -v claude &> /dev/null; then
             npm install -g @anthropic-ai/claude-code
           fi
+
+          # Install Vercel CLI if not present
+          if ! command -v vercel &> /dev/null; then
+            npm install -g vercel
+          fi
         '';
       in
       {

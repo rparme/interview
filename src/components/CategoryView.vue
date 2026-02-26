@@ -1,81 +1,297 @@
 <template>
-  <div class="category-view">
-    <button class="back-btn" @click="$emit('back')">
-      <span aria-hidden="true">←</span> Back to map
-    </button>
+  <div ref="rootEl" class="category-view">
 
-    <div class="cat-header">
-      <div class="cat-dot" :style="{ background: category.color }" aria-hidden="true" />
-      <h1 class="cat-title">{{ category.name }}</h1>
-    </div>
-
-    <p class="cat-meta">{{ doneCnt }} of {{ totalCnt }} problems completed</p>
-
-    <div class="progress-bar" role="progressbar" :aria-valuenow="pct" aria-valuemin="0" aria-valuemax="100">
-      <div class="progress-fill" :style="{ width: pct + '%', background: category.color }" />
-    </div>
-
-    <div class="problems-grid">
-      <div
-        v-for="problem in sortedProblems"
-        :key="problem.lc"
-        class="problem-card"
-        :class="{ done: problem.done, active: selectedProblem?.lc === problem.lc }"
-        :style="cardStyle(problem)"
-        tabindex="0"
-        role="button"
-        :aria-label="problem.title"
-        @click="openPanel(problem)"
-        @keydown.enter="openPanel(problem)"
-        @keydown.space.prevent="openPanel(problem)"
-        @mouseenter="onCardEnter($event, problem)"
-        @mouseleave="onCardLeave($event, problem)"
-      >
-        <div class="card-top">
-          <span class="lc-num">LC {{ problem.lc }}</span>
-          <div class="badges">
-            <!-- Done toggle checkbox -->
-            <button
-              class="done-toggle"
-              :class="{ 'is-done': problem.done }"
-              :style="problem.done ? { background: category.color, borderColor: category.color } : {}"
-              :aria-label="problem.done ? 'Mark as not done' : 'Mark as done'"
-              @click.stop="$emit('toggle-done', problem.lc)"
-            >
-              <span v-if="problem.done" aria-hidden="true">✓</span>
-            </button>
-            <span class="badge" :class="`badge-${problem.difficulty}`">{{ problem.difficulty }}</span>
-          </div>
+    <!-- TOP BAR -->
+    <div class="topbar">
+      <button class="back-btn" @click="$emit('back')">
+        <span aria-hidden="true">←</span> Back to map
+      </button>
+      <div class="cat-info">
+        <div class="cat-dot" :style="{ background: category.color }" aria-hidden="true" />
+        <h1 class="cat-title">{{ category.name }}</h1>
+        <span class="cat-meta">{{ doneCnt }}/{{ totalCnt }}</span>
+        <div class="progress-bar" role="progressbar" :aria-valuenow="pct" aria-valuemin="0" aria-valuemax="100" :aria-label="category.name + ' progress'">
+          <div class="progress-fill" :style="{ width: pct + '%', background: category.color }" />
         </div>
-        <div class="problem-title">{{ problem.title }}</div>
       </div>
     </div>
 
-    <ProblemPanel
-      :problem="selectedProblem"
-      :category-color="category.color"
-      @close="selectedLc = null"
-      @toggle-done="$emit('toggle-done', $event)"
-    />
+    <!-- MAIN 3-PANE -->
+    <div class="main">
+
+      <!-- LEFT: problem list sidebar -->
+      <div class="problems-sidebar" :style="{ width: sidebarWidth + 'px' }">
+        <div
+          v-for="problem in sortedProblems"
+          :key="problem.lc"
+          class="problem-item"
+          :class="{
+            done: problem.done,
+            checked: selectedForAI.has(problem.lc),
+            'is-viewing': selectedExercise?.lc === problem.lc,
+          }"
+          :style="selectedForAI.has(problem.lc) ? { borderLeftColor: '#a371f7' } : {}"
+          tabindex="0"
+          role="button"
+          :aria-label="problem.title"
+          @click="selectExercise(problem)"
+          @keydown.enter="selectExercise(problem)"
+        >
+          <div class="item-content">
+            <span class="badge" :class="`badge-${problem.difficulty}`">{{ problem.difficulty }}</span>
+            <span class="item-title" :title="problem.title">{{ problem.title }}</span>
+          </div>
+          <div class="item-actions" aria-hidden="true">
+            <button
+              class="action-btn action-ai"
+              :class="{ active: selectedForAI.has(problem.lc) }"
+              tabindex="-1"
+              title="Toggle AI context"
+              :aria-label="`Toggle AI context for ${problem.title}`"
+              @click.stop="toggleAISelect(problem)"
+            ><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.2H22l-6 4.8 2.4 7.2L12 16l-6.4 5.2 2.4-7.2-6-4.8h7.6z"/></svg></button>
+            <button
+              class="action-btn action-done"
+              :class="{ 'is-done': problem.done }"
+              tabindex="-1"
+              :aria-label="problem.done ? 'Mark as not done' : 'Mark as done'"
+              title="Toggle done"
+              @click.stop="$emit('toggle-done', problem.lc)"
+            ><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path v-if="problem.done" d="M8 12l3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            <button
+              class="action-btn action-chevron"
+              tabindex="-1"
+              title="Open exercise popup"
+              :aria-label="`Open exercise popup for ${problem.title}`"
+              @click.stop="openExercise(problem)"
+            ><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M17 7H7M17 7v10"/></svg></button>
+          </div>
+        </div>
+
+        <!-- DB save error -->
+        <div v-if="dbSaveError" class="sidebar-db-error">
+          <span class="db-error-icon">!</span>{{ dbSaveError }}
+        </div>
+
+        <!-- Saved generated exercises -->
+        <template v-if="savedExercises.length">
+          <div class="sidebar-divider">
+            <span class="divider-label">Generated</span>
+          </div>
+          <div
+            v-for="ex in savedExercises"
+            :key="ex.id"
+            class="saved-ex-item"
+            :class="{
+              'is-active': currentExerciseId === ex.id,
+              done: ex.done,
+              checked: selectedGenForAI.has(ex.id),
+            }"
+            :style="selectedGenForAI.has(ex.id) ? { borderLeftColor: '#a371f7' } : {}"
+            tabindex="0"
+            role="button"
+            :aria-label="ex.title"
+            @click="openSavedExercise(ex)"
+            @keydown.enter="openSavedExercise(ex)"
+          >
+            <div class="item-content">
+              <span class="badge" :class="`badge-${ex.difficulty}`">{{ ex.difficulty }}</span>
+              <span class="item-title" :title="ex.title">{{ ex.title }}</span>
+            </div>
+            <div class="item-actions" aria-hidden="true">
+              <button
+                class="action-btn action-ai"
+                :class="{ active: selectedGenForAI.has(ex.id) }"
+                tabindex="-1"
+                title="Toggle AI context"
+                :aria-label="`Toggle AI context for ${ex.title}`"
+                @click.stop="toggleGenAISelect(ex)"
+              ><svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.4 7.2H22l-6 4.8 2.4 7.2L12 16l-6.4 5.2 2.4-7.2-6-4.8h7.6z"/></svg></button>
+              <button
+                class="action-btn action-done"
+                :class="{ 'is-done': ex.done }"
+                tabindex="-1"
+                :aria-label="ex.done ? 'Mark as not done' : 'Mark as done'"
+                title="Toggle done"
+                @click.stop="toggleGenDone(ex)"
+              ><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="9"/><path v-if="ex.done" d="M8 12l3 3 5-6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+              <button
+                v-if="isSubscribed"
+                class="action-btn action-delete"
+                tabindex="-1"
+                title="Delete exercise"
+                aria-label="Delete generated exercise"
+                @click.stop="deleteGeneratedExercise(ex, $event)"
+              ><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg></button>
+              <span v-else class="action-btn action-placeholder" aria-hidden="true" />
+            </div>
+          </div>
+        </template>
+        <div class="sidebar-resize-handle" @mousedown.prevent="onSidebarResizeStart" />
+      </div>
+
+      <!-- CENTER: editor -->
+      <div class="editor-area">
+        <GeneratorBar
+          :selected-for-a-i="selectedForAI"
+          :selected-gen-for-a-i="selectedGenForAI"
+          :saved-exercises="savedExercises"
+          :category-color="category.color"
+          :is-generating="isGenerating"
+          :generation-blocked="generationBlocked"
+          :generation-status="generationStatus"
+          :generation-error="generationError"
+          :business-field="businessField"
+          :business-fields="BUSINESS_FIELDS"
+          :problem-by-lc="problemByLc"
+          @update:business-field="businessField = $event"
+          @remove-ai-chip="selectedForAI.delete($event)"
+          @remove-gen-chip="selectedGenForAI.delete($event)"
+          @generate="generate"
+        />
+
+        <!-- Monaco toolbar -->
+        <div class="editor-toolbar">
+          <span class="editor-lang">py3</span>
+          <div class="toolbar-actions">
+            <span v-if="isGenerating" class="loading-py">
+              <span class="spinner" aria-hidden="true" />
+              {{ generationStatus === 'solving' ? 'solving…' : generationStatus === 'verifying' ? 'verifying…' : generationStatus === 'writing tests' ? 'writing tests…' : 'generating…' }}
+            </span>
+            <span v-else-if="!workerReady" class="loading-py">
+              <span class="spinner" aria-hidden="true" />
+              loading python…
+            </span>
+            <span v-if="(isGenerating || !workerReady)" class="toolbar-sep" aria-hidden="true" />
+            <button
+              class="run-btn"
+              :class="{ 'is-ready': workerReady && !isRunning && !isGenerating }"
+              :style="workerReady && !isRunning && !isGenerating ? { borderColor: category.color + '70', color: category.color } : {}"
+              :disabled="!workerReady || isRunning || isGenerating"
+              :title="isGenerating ? 'waiting for generation…' : workerReady ? 'Run (Ctrl+Enter)' : 'loading python…'"
+              @click="runCode"
+            >
+              <span v-if="isRunning" class="spinner spinner-run" aria-hidden="true" />
+              <span v-else aria-hidden="true">▶</span>
+              {{ isRunning ? 'running…' : 'Run' }}
+            </button>
+            <button
+              class="run-btn analyze-btn"
+              :class="{
+                'is-ready':    isSubscribed && !isAnalyzing && !isGenerating && workerReady,
+                'is-analyzing': isAnalyzing,
+              }"
+              :disabled="!isSubscribed || isAnalyzing || isGenerating || !workerReady"
+              :title="!isSubscribed ? 'Subscribe to unlock complexity analysis' : isAnalyzing ? 'Analyzing…' : 'Analyze time & space complexity (∑)'"
+              @click="analyze().then(() => { activeTestTab = '__complexity__' })"
+            >
+              <span class="analyze-icon" aria-hidden="true">{{ !isSubscribed ? '⌁' : '∑' }}</span>
+              {{ isAnalyzing ? 'analyzing…' : 'analyze' }}
+            </button>
+          </div>
+        </div>
+
+        <div v-if="hasSolution || isGenerating" class="editor-tabs">
+          <button
+            class="editor-tab"
+            :class="{ active: activeEditorTab === 'code' }"
+            @click="switchEditorTab('code')"
+          >your code</button>
+          <button
+            class="editor-tab"
+            :class="{ active: activeEditorTab === 'solution' }"
+            :disabled="!hasSolution"
+            @click="switchEditorTab('solution')"
+          >&#9670; solution</button>
+        </div>
+
+        <div v-if="editorError" class="editor-error">{{ editorError }}</div>
+        <div class="editor-wrap">
+          <div ref="editorEl" class="editor-container" :style="editorError ? { display: 'none' } : {}" />
+          <div v-if="isGenerating" class="editor-disabled-overlay">
+            <span class="spinner" aria-hidden="true" />
+            {{ generationStatus === 'solving' ? 'solving…' : generationStatus === 'verifying' ? 'verifying…' : generationStatus === 'writing tests' ? 'writing tests…' : 'generating…' }}
+          </div>
+
+        </div>
+
+        <OutputPane
+          :height="outputHeight"
+          :output="output"
+          :has-error="hasError"
+          :output-display="outputDisplay"
+          :test-results="testResults"
+          :active-test-tab="activeTestTab"
+          :parsed-test-cases="parsedTestCases"
+          :analysis-result="analysisResult"
+          :analysis-error="analysisError"
+          :is-analyzing="isAnalyzing"
+          @resize-start="onOutputResizeStart"
+          @update:active-test-tab="activeTestTab = $event"
+          @select-complexity="activeTestTab = '__complexity__'"
+          @clear="clearOutput(); clearAnalysis()"
+        />
+      </div>
+
+      <!-- RIGHT: detail panel (resizable) -->
+      <DetailPanel
+        :width="panelWidth"
+        :panel-mode="panelMode"
+        :generated-problem="generatedProblem"
+        :selected-exercise="selectedExercise"
+        :description-html="descriptionHtml"
+        :difficulty-guess="difficultyGuess"
+        :panel-anim-text="panelAnimText"
+        :generation-status="generationStatus"
+        :is-generating="isGenerating"
+        :is-generating-tests="isGeneratingTests"
+        :is-running="isRunning"
+        :show-tests="showTests"
+        :test-results="testResults"
+        :parsed-test-names="parsedTestNames"
+        :parsed-test-cases="parsedTestCases"
+        :all-tests-passing="allTestsPassing"
+        :expanded-test="expandedTest"
+        :test-result-for="testResultFor"
+        :format-test-name="formatTestName"
+        :test-source-for="testSourceFor"
+        @resize-start="onResizeStart"
+        @update:show-tests="showTests = $event"
+        @update:expanded-test="expandedTest = $event"
+      />
+    </div>
   </div>
+
+  <ExercisePopup :problem="popupProblem" @close="closePopup" />
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
-import ProblemPanel from './ProblemPanel.vue'
+import { ref, computed, watch, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { useAuth } from '../composables/useAuth.js'
+import { useResizePanels } from '../composables/useResizePanels.js'
+import GeneratorBar from './GeneratorBar.vue'
+import OutputPane from './OutputPane.vue'
+import DetailPanel from './DetailPanel.vue'
+import ExercisePopup from './ExercisePopup.vue'
+import { useMonacoEditor } from '../composables/useMonacoEditor.js'
+import { useCodeExecution } from '../composables/useCodeExecution.js'
+import { useComplexityAnalysis } from '../composables/useComplexityAnalysis.js'
+import { useSavedExercises } from '../composables/useSavedExercises.js'
+import { useProblemGeneration } from '../composables/useProblemGeneration.js'
 
 const props = defineProps({
   category: { type: Object, required: true },
 })
 
-defineEmits(['back', 'toggle-done'])
+const emit = defineEmits(['back', 'toggle-done', 'open-auth'])
 
-const selectedLc = ref(null)
-// Derived from props so it stays in sync when doneSet updates
-const selectedProblem = computed(() =>
-  props.category.problems.find(p => p.lc === selectedLc.value) ?? null
-)
+const { user, isSubscribed } = useAuth()
 
+// ── Template refs ──
+const rootEl = ref(null)
+const editorEl = ref(null)
+
+// ── Problem list ──
 const DIFFICULTY_ORDER = { Easy: 0, Medium: 1, Hard: 2 }
 const sortedProblems = computed(() =>
   [...props.category.problems].sort(
@@ -83,38 +299,266 @@ const sortedProblems = computed(() =>
   )
 )
 
-const doneCnt  = computed(() => props.category.problems.filter(p => p.done).length)
-const totalCnt = computed(() => props.category.problems.length)
-const pct      = computed(() => Math.round((doneCnt.value / totalCnt.value) * 100))
-
-function openPanel(problem) {
-  selectedLc.value = problem.lc
+function problemByLc(lc) {
+  return props.category.problems.find(p => p.lc === lc)
 }
 
-function cardStyle(problem) {
-  const isActive = selectedProblem.value?.lc === problem.lc
-  if (isActive) return { borderColor: props.category.color, background: props.category.color + '10' }
-  if (problem.done) return { borderColor: props.category.color + '50' }
-  return { borderColor: '#21262d' }
+// ── AI context selection ──
+const selectedForAI = reactive(new Set())
+const selectedGenForAI = reactive(new Set())
+
+function toggleAISelect(problem) {
+  if (selectedForAI.has(problem.lc)) selectedForAI.delete(problem.lc)
+  else selectedForAI.add(problem.lc)
 }
 
-function onCardEnter(e, problem) {
-  if (selectedProblem.value?.lc === problem.lc) return
-  e.currentTarget.style.borderColor = problem.done
-    ? props.category.color + '80'
-    : props.category.color + '60'
+function toggleGenAISelect(ex) {
+  if (selectedGenForAI.has(ex.id)) selectedGenForAI.delete(ex.id)
+  else selectedGenForAI.add(ex.id)
 }
 
-function onCardLeave(e, problem) {
-  if (selectedProblem.value?.lc === problem.lc) return
-  e.currentTarget.style.borderColor = problem.done ? props.category.color + '50' : '#21262d'
+// ── Exercise detail / panel state ──
+const selectedExercise = ref(null)
+const panelMode = ref('empty')
+
+function selectExercise(problem) {
+  selectedExercise.value = problem
+  if (panelMode.value !== 'generated') panelMode.value = 'exercise'
 }
+
+// ── Exercise popup ──
+const popupProblem = ref(null)
+
+function openExercise(problem) { popupProblem.value = problem }
+function closePopup() { popupProblem.value = null }
+function onPopupKey(e) { if (e.key === 'Escape') closePopup() }
+
+watch(popupProblem, (val) => {
+  if (val) document.addEventListener('keydown', onPopupKey)
+  else document.removeEventListener('keydown', onPopupKey)
+})
+
+// ── Composable 1: Resize panels ──
+const { panelWidth, outputHeight, sidebarWidth, onResizeStart, onSidebarResizeStart, onOutputResizeStart, cleanupResize } =
+  useResizePanels(rootEl)
+
+// ── Composable 2: Monaco editor ──
+// Late-binding wrappers for circular deps (runCode, scheduleSave not available yet)
+let _runCode = () => {}
+let _scheduleSave = () => {}
+
+const { editorError, initEditor, destroyEditor, getValue: getEditorValue, setValue: setEditorValue, setReadOnly: setEditorReadOnly } =
+  useMonacoEditor({
+    editorEl,
+    getInitialValue: () => generatedProblem.value?.starterCode,
+    onContentChange: () => _scheduleSave(),
+    onRunAction: () => _runCode(),
+  })
+
+// ── Composable 3: Saved exercises ──
+// getUserCode returns the user's code regardless of which editor tab is active.
+// When on the solution tab, the user's code lives in savedUserCode (not in the editor).
+function getUserCode() {
+  if (activeEditorTab.value === 'solution') return savedUserCode.value
+  return getEditorValue()
+}
+
+const {
+  savedExercises, currentExerciseId, dbSaveError,
+  loadSavedExercises, persistGeneratedExercise, deleteGeneratedExercise: _deleteGenExercise,
+  toggleGenDone, scheduleSave, flushSave, prepareOpenSavedExercise, cleanupSave,
+} = useSavedExercises({
+  getCategoryId: () => props.category.id,
+  openAuth: () => emit('open-auth'),
+  getEditorValue: () => getUserCode(),
+})
+
+// Wrap deleteGeneratedExercise to handle panelMode + editor reset
+async function deleteGeneratedExercise(ex, event) {
+  const wasActive = currentExerciseId.value === ex.id
+  await _deleteGenExercise(ex, event)
+  if (wasActive) {
+    generatedProblem.value = null
+    activeEditorTab.value = 'code'
+    savedUserCode.value = ''
+    setEditorReadOnly(false)
+    setEditorValue('')
+    clearOutput()
+    testResults.value = []
+    panelMode.value = selectedExercise.value ? 'exercise' : 'empty'
+  }
+}
+
+// ── Composable 4: Code execution ──
+const unitTests = computed(() => generatedProblem.value?.unitTests ?? '')
+
+const {
+  workerReady, isRunning, output, hasError, testResults, activeTestTab,
+  outputDisplay, parsedTestNames, parsedTestCases, allTestsPassing,
+  expandedTest, showTests, runCode, runPython, clearOutput, ensureWorker,
+  testResultFor, formatTestName, testSourceFor,
+} = useCodeExecution({
+  getEditorValue: () => getEditorValue(),
+  unitTests,
+})
+
+// ── Composable 5: Problem generation ──
+const {
+  businessField, generatedProblem, isGenerating, isGeneratingTests,
+  generationStatus, generationError, generationBlocked, descriptionHtml,
+  difficultyGuess, panelAnimText, BUSINESS_FIELDS,
+  generate, stopAnim,
+} = useProblemGeneration({
+  getCategoryName: () => props.category.name,
+  selectedForAI,
+  selectedGenForAI,
+  problemByLc,
+  savedExercises,
+  loadSavedExercises,
+  persistGeneratedExercise,
+  flushSave,
+  setEditorValue,
+  openAuth: () => emit('open-auth'),
+  panelMode,
+  currentExerciseId,
+  dbSaveError,
+  showTests,
+  getSelectedExercise: () => selectedExercise.value,
+  runPython,
+})
+
+// ── Composable 6: Complexity analysis ──
+const { isAnalyzing, analysisResult, analysisError, analyze, clearAnalysis } =
+  useComplexityAnalysis({
+    getEditorValue: () => getEditorValue(),
+    getGeneratedProblem: () => generatedProblem.value,
+    openAuth: () => emit('open-auth'),
+  })
+
+// ── Editor tab bar (code vs solution) ──
+const activeEditorTab = ref('code')
+const savedUserCode = ref('')
+
+// Wire late-binding callbacks now that all composables are initialised
+_runCode = runCode
+_scheduleSave = () => {
+  // Don't autosave when viewing the solution tab — editor contains solution code, not user code
+  if (activeEditorTab.value !== 'solution') scheduleSave()
+}
+
+const hasSolution = computed(() =>
+  generatedProblem.value?.solutionCode && generatedProblem.value.solutionCode.length > 0
+)
+
+function switchEditorTab(tab) {
+  if (tab === activeEditorTab.value) return
+  if (tab === 'solution' && !hasSolution.value) return
+  if (tab === 'solution') {
+    savedUserCode.value = getEditorValue()
+    setEditorValue(generatedProblem.value.solutionCode)
+    setEditorReadOnly(true)
+  } else {
+    setEditorValue(savedUserCode.value)
+    setEditorReadOnly(false)
+  }
+  activeEditorTab.value = tab
+}
+
+// ── Derived counts ──
+const doneCnt = computed(() =>
+  props.category.problems.filter(p => p.done).length +
+  savedExercises.value.filter(e => e.done).length
+)
+const totalCnt = computed(() =>
+  props.category.problems.length + savedExercises.value.length
+)
+const pct = computed(() => Math.round((doneCnt.value / totalCnt.value) * 100))
+
+// ── Open saved exercise (UI orchestration) ──
+async function openSavedExercise(ex) {
+  const { exercise, savedCode } = await prepareOpenSavedExercise(ex.id)
+  selectedExercise.value = null
+  activeEditorTab.value = 'code'
+  savedUserCode.value = ''
+  setEditorReadOnly(false)
+  generatedProblem.value = exercise
+  panelMode.value = 'generated'
+  testResults.value = []
+  expandedTest.value = null
+  setEditorValue(savedCode ?? exercise.starterCode)
+}
+
+// ── Watchers ──
+watch(user, () => loadSavedExercises())
+
+watch(isGenerating, (generating) => {
+  if (generating) {
+    setEditorReadOnly(true)
+    // Clear stale state from previous exercise
+    testResults.value = []
+    expandedTest.value = null
+    activeTestTab.value = null
+    clearOutput()
+    clearAnalysis()
+    activeEditorTab.value = 'code'
+    savedUserCode.value = ''
+  } else if (activeEditorTab.value !== 'solution') {
+    setEditorReadOnly(false)
+  }
+})
+
+watch(() => generatedProblem.value?.unitTests, (tests) => {
+  if (tests) showTests.value = false
+})
+
+// Reset editor tabs when a new problem is generated or loaded
+watch(generatedProblem, (newVal, oldVal) => {
+  if (newVal !== oldVal) {
+    activeEditorTab.value = 'code'
+    savedUserCode.value = ''
+  }
+})
+
+
+// ── Lifecycle ──
+ensureWorker()
+
+onMounted(() => { loadSavedExercises(); initEditor() })
+
+onBeforeUnmount(() => {
+  cleanupSave()
+  stopAnim()
+  destroyEditor()
+  cleanupResize()
+})
 </script>
 
 <style scoped>
+/* ── Layout ── */
 .category-view {
-  min-height: 100vh;
-  padding: 2rem 2.5rem;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #0d1117;
+  color: #e6edf3;
+}
+.category-view.is-resizing { cursor: col-resize; user-select: none; }
+.category-view.is-resizing .editor-container,
+.category-view.is-resizing .editor-wrap { pointer-events: none; }
+.category-view.is-resizing-output { cursor: row-resize; user-select: none; }
+.category-view.is-resizing-output .editor-container,
+.category-view.is-resizing-output .editor-wrap { pointer-events: none; }
+
+/* ── Top bar ── */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0 3.5rem 0 1.25rem;
+  height: 50px;
+  flex-shrink: 0;
+  border-bottom: 1px solid #21262d;
 }
 
 .back-btn {
@@ -124,121 +568,327 @@ function onCardLeave(e, problem) {
   background: none;
   border: 1px solid #30363d;
   color: #8b949e;
-  padding: 0.45rem 1rem;
-  border-radius: 8px;
+  padding: 0.3rem 0.8rem;
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 0.875rem;
+  font-size: 0.8rem;
   font-family: inherit;
-  margin-bottom: 2.5rem;
-  transition: border-color 0.18s, color 0.18s;
+  flex-shrink: 0;
+  transition: border-color 0.15s, color 0.15s;
 }
 .back-btn:hover { border-color: #58a6ff; color: #58a6ff; }
 
-.cat-header {
-  display: flex;
-  align-items: center;
-  gap: 0.875rem;
-  margin-bottom: 0.5rem;
+.cat-info { display: flex; align-items: center; gap: 0.65rem; min-width: 0; }
+.cat-dot { width: 11px; height: 11px; border-radius: 50%; flex-shrink: 0; }
+.cat-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-
-.cat-dot { width: 14px; height: 14px; border-radius: 50%; flex-shrink: 0; }
-
-.cat-title { font-size: 1.75rem; font-weight: 700; }
-
-.cat-meta {
-  color: #8b949e;
-  font-size: 0.875rem;
-  margin-bottom: 0.6rem;
-  padding-left: 1.875rem;
-}
-
+.cat-meta { color: #6e7681; font-size: 0.75rem; white-space: nowrap; }
 .progress-bar {
-  width: 220px;
+  width: 100px;
   height: 3px;
   background: #21262d;
   border-radius: 2px;
-  margin-bottom: 2.25rem;
-  margin-left: 1.875rem;
   overflow: hidden;
+  flex-shrink: 0;
 }
-
 .progress-fill { height: 100%; border-radius: 2px; transition: width 0.5s ease; }
 
-.problems-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(270px, 1fr));
-  gap: 0.75rem;
-  max-width: 1100px;
-}
+/* ── Main 3-pane ── */
+.main { flex: 1; display: flex; overflow: hidden; min-height: 0; }
 
-.problem-card {
-  background: #161b22;
-  border: 1px solid #21262d;
-  border-radius: 10px;
-  padding: 1.1rem 1.2rem;
-  cursor: pointer;
-  transition: border-color 0.18s, transform 0.15s, background 0.18s;
-  user-select: none;
-}
-
-.problem-card:hover { transform: translateY(-2px); background: #1c2128; }
-.problem-card:focus-visible { outline: 2px solid #58a6ff; outline-offset: 2px; }
-.problem-card.done { opacity: 0.65; }
-.problem-card.active { transform: translateY(-2px); }
-
-.card-top {
+/* ── Left sidebar ── */
+.problems-sidebar {
+  flex-shrink: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-right: 1px solid #21262d;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.6rem;
+  flex-direction: column;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: #30363d transparent;
 }
 
-.lc-num {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 0.72rem;
-  color: #6e7681;
-  background: #21262d;
-  padding: 0.1rem 0.45rem;
-  border-radius: 4px;
-}
-
-.badges { display: flex; gap: 0.35rem; align-items: center; }
-
-/* Done toggle checkbox */
-.done-toggle {
-  width: 20px;
-  height: 20px;
-  border-radius: 5px;
-  border: 1.5px solid #30363d;
-  background: transparent;
-  cursor: pointer;
+.sidebar-resize-handle {
+  position: absolute;
+  right: -2px;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  cursor: col-resize;
+  z-index: 10;
+  transition: background 0.15s;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.65rem;
-  color: #fff;
-  padding: 0;
-  transition: border-color 0.15s, background 0.15s;
-  flex-shrink: 0;
 }
-.done-toggle:hover:not(.is-done) { border-color: #58a6ff; }
+.sidebar-resize-handle::after {
+  content: '';
+  width: 2px;
+  height: 28px;
+  border-radius: 1px;
+  background: #30363d;
+  transition: background 0.15s, height 0.15s;
+}
+.sidebar-resize-handle:hover::after,
+.sidebar-resize-handle:active::after {
+  background: #58a6ff;
+  height: 40px;
+}
+.sidebar-resize-handle:hover,
+.sidebar-resize-handle:active {
+  background: rgba(88, 166, 255, 0.08);
+}
+
+/* ── Problem item: two-zone row (Fixed Action Zone / Proposal C) ── */
+.problem-item {
+  display: flex;
+  align-items: stretch;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  border-bottom: 1px solid #0d1117;
+  transition: background 0.12s, border-left-color 0.12s;
+  user-select: none;
+  min-height: 48px;
+}
+.problem-item:hover { background: #161b22; }
+.problem-item:focus-visible { outline: 2px solid #58a6ff; outline-offset: -2px; }
+.problem-item.done { opacity: 0.55; }
+.problem-item.checked { background: #161b22; }
+.problem-item.is-viewing { background: #161b22; border-left-color: #58a6ff !important; }
+.problem-item.is-viewing .item-title { color: #e6edf3; }
+
+/* Left content zone (~75%) */
+.item-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.28rem;
+  padding: 0.55rem 0.7rem;
+}
+
+/* Right action zone (~25%) */
+.item-actions {
+  flex-shrink: 0;
+  width: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  background: #161b22;
+  border-left: 1px solid #21262d;
+  padding: 0 0.2rem;
+}
+
+/* Shared action button base */
+.action-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  line-height: 1;
+  color: #484f58;
+  cursor: pointer;
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: color 0.12s, background 0.12s;
+}
+
+/* Star — AI context */
+.action-ai.active {
+  color: #a371f7;
+  background: rgba(163, 113, 247, 0.15);
+}
+.action-ai:hover:not(.active) { color: #a371f7; }
+
+/* Circle — done toggle */
+.action-done.is-done { color: #3fb950; }
+.action-done:hover:not(.is-done) { color: #3fb950; }
+
+/* Arrow (open popup) */
+.action-chevron:hover { color: #58a6ff; }
+
+/* X — delete (generated exercises) */
+.action-delete:hover { color: #f85149; }
+.action-placeholder { cursor: default; pointer-events: none; }
 
 .badge {
-  font-size: 0.68rem;
-  font-weight: 600;
-  padding: 0.15rem 0.55rem;
-  border-radius: 999px;
-  letter-spacing: 0.02em;
+  font-size: 0.6rem; font-weight: 600; padding: 0.08rem 0.38rem;
+  border-radius: 999px; letter-spacing: 0.02em;
+  align-self: flex-start;
 }
 .badge-Easy   { background: rgba(63,185,80,0.15);  color: #3fb950; }
 .badge-Medium { background: rgba(210,153,34,0.15); color: #d29922; }
 .badge-Hard   { background: rgba(248,81,73,0.15);  color: #f85149; }
 
-.problem-title { font-size: 0.9rem; font-weight: 500; line-height: 1.4; }
+.item-title {
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: #c9d1d9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
-@media (max-width: 600px) {
-  .category-view { padding: 1.25rem 1rem; }
-  .cat-title { font-size: 1.35rem; }
-  .problems-grid { grid-template-columns: 1fr; }
+/* ── Sidebar DB error ── */
+.sidebar-db-error {
+  display: flex; gap: 0.4rem; align-items: flex-start;
+  margin: 0.55rem 0.75rem 0; padding: 0.45rem 0.6rem;
+  background: rgba(248,81,73,0.07); border: 1px solid rgba(248,81,73,0.2);
+  border-radius: 4px; font-size: 0.69rem; color: #f0857a; line-height: 1.4;
+}
+.db-error-icon { font-weight: 700; font-size: 0.72rem; color: #f85149; flex-shrink: 0; line-height: 1.4; }
+
+/* ── Saved generated exercises sidebar ── */
+.sidebar-divider {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.65rem 0.9rem 0.2rem; flex-shrink: 0;
+}
+.sidebar-divider::before, .sidebar-divider::after {
+  content: ''; flex: 1; height: 1px; background: #21262d;
+}
+.divider-label {
+  font-size: 0.58rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.1em; color: #3d444d; white-space: nowrap; flex-shrink: 0;
+}
+
+.saved-ex-item {
+  display: flex;
+  align-items: stretch;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  border-bottom: 1px solid #0d1117;
+  transition: background 0.12s, border-left-color 0.12s;
+  user-select: none;
+  min-height: 48px;
+}
+.saved-ex-item:hover { background: #161b22; }
+.saved-ex-item.is-active { background: #161b22; border-left-color: #a371f7; }
+.saved-ex-item.done { opacity: 0.55; }
+.saved-ex-item:hover .item-title,
+.saved-ex-item.is-active .item-title { color: #e6edf3; }
+.saved-ex-item .item-title { color: #8b949e; }
+
+/* ── Center: editor area ── */
+.editor-area {
+  flex: 1; display: flex; flex-direction: column; overflow: hidden; min-width: 400px;
+}
+
+.editor-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 1rem; height: 36px; background: #161b22;
+  border-bottom: 1px solid #21262d; flex-shrink: 0;
+}
+.editor-lang {
+  display: flex; align-items: center; gap: 0.4rem;
+  font-size: 0.73rem; font-weight: 600; color: #6e7681; letter-spacing: 0.02em;
+}
+.toolbar-actions { display: flex; align-items: center; gap: 0.65rem; }
+.loading-py { display: flex; align-items: center; gap: 0.4rem; font-size: 0.73rem; color: #6e7681; }
+.toolbar-sep { width: 1px; height: 14px; background: #21262d; flex-shrink: 0; }
+.spinner-run { width: 10px; height: 10px; border-width: 1.5px; }
+
+.spinner {
+  display: inline-block; width: 10px; height: 10px;
+  border: 1.5px solid #30363d; border-top-color: #58a6ff;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.run-btn {
+  display: flex; align-items: center; gap: 0.35rem;
+  padding: 0.25rem 0.7rem; background: none;
+  border: 1px solid #30363d; border-radius: 4px;
+  color: #6e7681; font-size: 0.75rem; font-weight: 600;
+  font-family: inherit; cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+.run-btn.is-ready:hover { background: #161b22; }
+.run-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Analyze button — distinct from Run: amber accent, monospace label */
+.analyze-btn {
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+}
+.analyze-btn.is-ready {
+  border-color: #e5c07b60;
+  color: #e5c07b;
+}
+.analyze-btn.is-ready:hover {
+  background: rgba(229, 192, 123, 0.06);
+  border-color: #e5c07b;
+}
+.analyze-btn.is-analyzing {
+  border-color: #e5c07b40;
+  color: #e5c07b80;
+  cursor: wait;
+}
+.analyze-icon {
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.editor-tabs {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid #21262d;
+  background: #0d1117;
+  flex-shrink: 0;
+}
+.editor-tab {
+  padding: 0.35rem 0.85rem;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #6e7681;
+  font-family: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+.editor-tab:hover { color: #c9d1d9; }
+.editor-tab.active {
+  color: #e6edf3;
+  border-bottom-color: #58a6ff;
+}
+.editor-tab:disabled { opacity: 0.4; cursor: default; }
+
+.editor-wrap {
+  flex: 1; position: relative; display: flex; flex-direction: column; min-height: 0;
+}
+.editor-container { flex: 1; overflow: hidden; min-height: 0; }
+
+.editor-disabled-overlay {
+  position: absolute; inset: 0;
+  background: rgba(13, 17, 23, 0.55);
+  display: flex; align-items: center; justify-content: center;
+  gap: 0.55rem; font-size: 0.78rem; color: #6e7681;
+  font-family: 'Fira Code', 'SF Mono', monospace;
+  pointer-events: all; z-index: 5;
+}
+.editor-error {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  font-size: 0.82rem; color: #f85149;
+  background: rgba(248,81,73,0.06); padding: 1rem; text-align: center;
+}
+
+/* Responsive */
+@media (max-width: 650px) {
+  .problems-sidebar { min-width: 140px; }
 }
 </style>

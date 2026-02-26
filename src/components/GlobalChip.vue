@@ -18,7 +18,7 @@ defineProps({
   right: 1.25rem;
   background: #161b22;
   border: 1px solid #30363d;
-  border-radius: 8px;
+  border-radius: 4px;
   padding: 0.55rem 1rem;
   font-size: 0.78rem;
   color: #8b949e;

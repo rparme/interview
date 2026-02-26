@@ -1,7 +1,7 @@
 <template>
   <div class="mindmap-view">
-    <div class="page-header" aria-hidden="true">
-      <p class="page-title">Interview Patterns</p>
+    <div class="page-header">
+      <p class="page-title">Interview <span class="title-accent">Patterns</span></p>
       <p class="page-subtitle">Master the patterns. Crack the interview.</p>
     </div>
     <svg
@@ -11,16 +11,18 @@
       role="img"
       :aria-label="`Interview prep mindmap. ${totalDone} of ${totalProbs} problems solved.`"
     >
-      <!-- connector lines drawn first, behind nodes -->
+      <!-- connector lines drawn first, trimmed to circle edges -->
       <line
         v-for="(cat, i) in categories"
         :key="`line-${cat.id}`"
-        :x1="CX"
-        :y1="CY"
-        :x2="nodePos(i).x"
-        :y2="nodePos(i).y"
-        stroke="#21262d"
-        stroke-width="2"
+        :x1="connectorLine(i).x1"
+        :y1="connectorLine(i).y1"
+        :x2="connectorLine(i).x2"
+        :y2="connectorLine(i).y2"
+        stroke="#30363d"
+        stroke-width="1.5"
+        stroke-dasharray="6 4"
+        opacity="0.8"
       />
 
       <!-- center progress ring track -->
@@ -45,6 +47,7 @@
         :stroke-dashoffset="ringOffset"
         stroke-linecap="round"
         :transform="`rotate(-90 ${CX} ${CY})`"
+        style="transition: stroke-dashoffset 0.5s ease"
       />
 
       <!-- center circle -->
@@ -202,7 +205,7 @@ const CY = 350
 const ORBIT = 252
 const NODE_R = 56
 const RING_R = 84
-const FONT_FAMILY = "-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
+const FONT_FAMILY = "'Fira Code', 'SF Mono', 'Cascadia Code', monospace"
 
 /**
  * Compute the (x, y) center for node at index i, distributed radially.
@@ -212,6 +215,25 @@ function nodePos(i) {
   return {
     x: CX + ORBIT * Math.cos(angle),
     y: CY + ORBIT * Math.sin(angle),
+  }
+}
+
+const CENTER_R = 74
+const NODE_GLOW_R = NODE_R + 10
+
+/** Connector line trimmed to start at center circle edge and end at node glow edge. */
+function connectorLine(i) {
+  const { x: nx, y: ny } = nodePos(i)
+  const dx = nx - CX
+  const dy = ny - CY
+  const dist = Math.sqrt(dx * dx + dy * dy)
+  const ux = dx / dist
+  const uy = dy / dist
+  return {
+    x1: CX + ux * CENTER_R,
+    y1: CY + uy * CENTER_R,
+    x2: nx - ux * NODE_GLOW_R,
+    y2: ny - uy * NODE_GLOW_R,
   }
 }
 
@@ -275,12 +297,10 @@ function arcOffset(i) {
   font-size: clamp(1.5rem, 3vw, 2.4rem);
   font-weight: 800;
   letter-spacing: -0.02em;
-  background: linear-gradient(135deg, #e6edf3 0%, #58a6ff 60%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: #e6edf3;
   margin: 0 0 0.3rem;
 }
+.title-accent { color: #58a6ff; }
 
 .page-subtitle {
   font-size: clamp(0.7rem, 1.3vw, 0.85rem);
@@ -303,9 +323,10 @@ function arcOffset(i) {
 .category-node:focus {
   outline: none;
 }
-
-.category-node:focus .node-bg {
+.category-node:focus-visible .node-bg {
   fill-opacity: 0.28;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 4px currentColor);
 }
 
 .node-bg {
