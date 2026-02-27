@@ -410,6 +410,7 @@ const {
   generate, stopAnim,
 } = useProblemGeneration({
   getCategoryName: () => props.category.name,
+  getCategoryId: () => props.category.id,
   selectedForAI,
   selectedGenForAI,
   problemByLc,

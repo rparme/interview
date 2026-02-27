@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { callAnthropic, callOpenRouter, resolveProvider } from './_provider.mjs'
+import { requireSubscribed } from './_auth.mjs'
 
 const ProblemSchema = z.object({
   title: z.string(),
@@ -39,11 +40,14 @@ const PROBLEM_TOOL_SCHEMA = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
+  try { await requireSubscribed(req, req.body?.categoryId) }
+  catch (err) { return res.status(err.status ?? 401).json({ error: err.message, code: err.code }) }
+
   let provider
   try { provider = resolveProvider() }
   catch (err) { return res.status(500).json({ error: err.message }) }
 
-  const { category, selectedProblems = [], businessField } = req.body ?? {}
+  const { category, categoryId, selectedProblems = [], businessField } = req.body ?? {}
   if (!category) return res.status(400).json({ error: 'category is required' })
 
   const referenceContext = selectedProblems.length

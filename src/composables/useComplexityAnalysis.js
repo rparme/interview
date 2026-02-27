@@ -1,5 +1,6 @@
 import { ref } from 'vue'
 import { useAuth } from './useAuth.js'
+import { supabase } from '../lib/supabase.js'
 
 export function useComplexityAnalysis({ getEditorValue, getGeneratedProblem, openAuth }) {
   const { isSubscribed } = useAuth()
@@ -26,9 +27,14 @@ export function useComplexityAnalysis({ getEditorValue, getGeneratedProblem, ope
     }
 
     try {
+      const { data: { session } } = await supabase.auth.getSession()
+      const token = session?.access_token
       const res = await fetch('/api/analyze-complexity', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token && { Authorization: `Bearer ${token}` }),
+        },
         body: JSON.stringify({ code, problemContext }),
       })
       if (!res.ok) {

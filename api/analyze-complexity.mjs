@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { callAnthropic, callOpenRouter, resolveProvider } from './_provider.mjs'
+import { requireSubscribed } from './_auth.mjs'
 
 const ComplexitySchema = z.object({
   timeComplexity: z.string(),
@@ -19,6 +20,9 @@ const COMPLEXITY_TOOL_SCHEMA = {
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  try { await requireSubscribed(req, null) }
+  catch (err) { return res.status(err.status ?? 401).json({ error: err.message, code: err.code }) }
 
   let provider
   try { provider = resolveProvider() }

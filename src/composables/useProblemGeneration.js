@@ -1,6 +1,7 @@
 import { ref, computed } from 'vue'
 import { marked } from 'marked'
 import { useAuth } from './useAuth.js'
+import { supabase } from '../lib/supabase.js'
 
 marked.use({ breaks: true, gfm: true })
 
@@ -76,6 +77,7 @@ const VERIFY_FRAMES = [
 
 export function useProblemGeneration({
   getCategoryName,
+  getCategoryId,
   selectedForAI,
   selectedGenForAI,
   problemByLc,
@@ -152,9 +154,14 @@ export function useProblemGeneration({
 
   // ── API ──
   async function apiFetch(url, body) {
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
       body: JSON.stringify(body),
     })
     let data
@@ -190,6 +197,7 @@ export function useProblemGeneration({
       generationStatus.value = 'generating'
       const draft = await apiFetch('/api/generate', {
         category: getCategoryName(),
+        categoryId: getCategoryId(),
         selectedProblems,
         businessField: businessField.value || null,
       })

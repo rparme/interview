@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { callAnthropic, callOpenRouter, resolveProvider } from './_provider.mjs'
+import { requireAuth } from './_auth.mjs'
 
 const UNIT_TEST_TOOL_SCHEMA = {
   type: 'object',
@@ -32,6 +33,9 @@ const ResultSchema = z.object({
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
+
+  try { await requireAuth(req) }
+  catch (err) { return res.status(err.status ?? 401).json({ error: err.message }) }
 
   let provider
   try { provider = resolveProvider() }
