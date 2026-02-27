@@ -95,7 +95,7 @@
         class="category-node"
         tabindex="0"
         role="button"
-        :aria-label="`${cat.name}: ${catDone(cat)} of ${cat.problems.length} done`"
+        :aria-label="`${cat.name}: ${catDone(cat)} of ${catTotal(cat)} done`"
         @click="$emit('select', cat.id)"
         @keydown.enter="$emit('select', cat.id)"
         @keydown.space.prevent="$emit('select', cat.id)"
@@ -111,7 +111,7 @@
 
         <!-- partial progress arc -->
         <circle
-          v-if="catDone(cat) > 0 && catDone(cat) < cat.problems.length"
+          v-if="catDone(cat) > 0 && catDone(cat) < catTotal(cat)"
           :cx="nodePos(i).x"
           :cy="nodePos(i).y"
           :r="NODE_R + 7"
@@ -128,7 +128,7 @@
 
         <!-- full ring when category complete -->
         <circle
-          v-if="catDone(cat) === cat.problems.length"
+          v-if="catTotal(cat) > 0 && catDone(cat) === catTotal(cat)"
           :cx="nodePos(i).x"
           :cy="nodePos(i).y"
           :r="NODE_R + 7"
@@ -182,7 +182,7 @@
           :font-family="FONT_FAMILY"
           pointer-events="none"
           user-select="none"
-        >{{ catDone(cat) }}/{{ cat.problems.length }}</text>
+        >{{ catDone(cat) }}/{{ catTotal(cat) }}</text>
       </g>
     </svg>
   </div>
@@ -237,15 +237,21 @@ function connectorLine(i) {
   }
 }
 
-/** Number of completed problems in a category. */
+/** Number of completed problems in a category (static + generated). */
 function catDone(cat) {
-  return cat.problems.filter(p => p.done).length
+  return cat.problems.filter(p => p.done).length + (cat.genDone ?? 0)
+}
+
+/** Total problems in a category (static + generated). */
+function catTotal(cat) {
+  return cat.problems.length + (cat.genTotal ?? 0)
 }
 
 /** Color for the progress fraction text on a node. */
 function progressColor(cat) {
   const done = catDone(cat)
-  if (done === cat.problems.length) return '#3fb950'
+  const total = catTotal(cat)
+  if (total > 0 && done === total) return '#3fb950'
   if (done > 0) return cat.color
   return '#6e7681'
 }
@@ -266,9 +272,9 @@ function arcCirc(i) {
 function arcOffset(i) {
   const cat   = props.categories[i]
   const done  = catDone(cat)
-  const total = cat.problems.length
+  const total = catTotal(cat)
   const circ  = 2 * Math.PI * (NODE_R + 7)
-  return circ - (done / total) * circ
+  return total ? circ - (done / total) * circ : circ
 }
 </script>
 

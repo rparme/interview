@@ -38,7 +38,7 @@ import { useAuth } from './composables/useAuth.js'
 import { useProblems } from './composables/useProblems.js'
 
 const { user } = useAuth()
-const { enrichedCategories, totalDone, totalProbs, toggleDone } = useProblems()
+const { enrichedCategories, totalDone, totalProbs, toggleDone, refreshGenCounts } = useProblems()
 
 const activeView       = ref('map')
 const activeCategoryId = ref(null)
@@ -57,6 +57,7 @@ function openCategory(id) {
 function goBack() {
   activeView.value = 'map'
   activeCategoryId.value = null
+  refreshGenCounts()
 }
 
 function onToggleDone(lc) {

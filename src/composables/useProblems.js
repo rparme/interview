@@ -5,8 +5,9 @@ import { useAuth } from './useAuth.js'
 const { user } = useAuth()
 
 // Module-level singletons
-const categories = ref([])   // raw DB rows: { id, name, lines, color, problems: [] }
-const doneSet    = ref(new Set())
+const categories   = ref([])   // raw DB rows: { id, name, lines, color, problems: [] }
+const doneSet      = ref(new Set())
+const genByCategory = ref({})  // { [category_id]: { total, done } }
 
 // ── Reference data (public, loaded once) ────────────────────────────────────
 
@@ -55,31 +56,53 @@ async function loadProgress(userId) {
   doneSet.value = new Set((data ?? []).map(r => r.lc))
 }
 
+async function loadGenCounts(userId) {
+  const { data } = await supabase
+    .from('generated_exercises')
+    .select('category_id, is_done')
+    .eq('user_id', userId)
+
+  const map = {}
+  for (const row of data ?? []) {
+    if (!map[row.category_id]) map[row.category_id] = { total: 0, done: 0 }
+    map[row.category_id].total++
+    if (row.is_done) map[row.category_id].done++
+  }
+  genByCategory.value = map
+}
+
 // React to login / logout
 watch(user, (u) => {
   if (u) {
     loadProgress(u.id)
+    loadGenCounts(u.id)
   } else {
     doneSet.value = new Set()
+    genByCategory.value = {}
   }
 }, { immediate: true })
 
 // ── Derived ──────────────────────────────────────────────────────────────────
 
-/** categories with each problem enriched with a reactive `done` boolean */
+/** categories with each problem enriched with a reactive `done` boolean + generated exercise counts */
 const enrichedCategories = computed(() =>
-  categories.value.map(cat => ({
-    ...cat,
-    problems: cat.problems.map(p => ({ ...p, done: doneSet.value.has(p.lc) })),
-  }))
+  categories.value.map(cat => {
+    const gen = genByCategory.value[cat.id] ?? { total: 0, done: 0 }
+    return {
+      ...cat,
+      problems: cat.problems.map(p => ({ ...p, done: doneSet.value.has(p.lc) })),
+      genTotal: gen.total,
+      genDone:  gen.done,
+    }
+  })
 )
 
 const totalProbs = computed(() =>
-  categories.value.reduce((s, c) => s + c.problems.length, 0)
+  enrichedCategories.value.reduce((s, c) => s + c.problems.length + c.genTotal, 0)
 )
 
 const totalDone = computed(() =>
-  doneSet.value.size
+  enrichedCategories.value.reduce((s, c) => s + c.problems.filter(p => p.done).length + c.genDone, 0)
 )
 
 // ── Mutations ────────────────────────────────────────────────────────────────
@@ -118,6 +141,10 @@ async function toggleDone(lc) {
   }
 }
 
+function refreshGenCounts() {
+  if (user.value) loadGenCounts(user.value.id)
+}
+
 export function useProblems() {
-  return { enrichedCategories, totalDone, totalProbs, toggleDone }
+  return { enrichedCategories, totalDone, totalProbs, toggleDone, refreshGenCounts }
 }
