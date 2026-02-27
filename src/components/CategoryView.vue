@@ -176,6 +176,7 @@
               {{ isRunning ? 'running…' : 'Run' }}
             </button>
             <button
+              v-show="activeEditorTab !== 'explain'"
               class="run-btn analyze-btn"
               :class="{
                 'is-ready':    isSubscribed && !isAnalyzing && !isGenerating && workerReady,
@@ -191,7 +192,13 @@
           </div>
         </div>
 
-        <div v-if="hasSolution || isGenerating" class="editor-tabs">
+        <div v-if="hasSolution || isGenerating || panelMode === 'generated'" class="editor-tabs">
+          <button
+            v-if="panelMode === 'generated'"
+            class="editor-tab"
+            :class="{ active: activeEditorTab === 'explain' }"
+            @click="switchEditorTab('explain')"
+          >explain</button>
           <button
             class="editor-tab"
             :class="{ active: activeEditorTab === 'code' }"
@@ -205,8 +212,8 @@
           >&#9670; solution</button>
         </div>
 
-        <div v-if="editorError" class="editor-error">{{ editorError }}</div>
-        <div class="editor-wrap">
+        <div v-if="editorError && activeEditorTab !== 'explain'" class="editor-error">{{ editorError }}</div>
+        <div v-show="activeEditorTab !== 'explain'" class="editor-wrap">
           <div ref="editorEl" class="editor-container" :style="editorError ? { display: 'none' } : {}" />
           <div v-if="isGenerating" class="editor-disabled-overlay">
             <span class="spinner" aria-hidden="true" />
@@ -214,6 +221,21 @@
           </div>
 
         </div>
+
+        <ExplainPanel
+          v-if="panelMode === 'generated' && activeEditorTab === 'explain'"
+          :recording-state="recordingState"
+          :transcript="transcript"
+          :interim-text="interimText"
+          :review-result="reviewResult"
+          :review-error="reviewError"
+          :is-speech-supported="isSpeechSupported"
+          @start="startRecording"
+          @stop="stopRecording"
+          @submit="submitForReview"
+          @reset="resetExplain"
+          @clear="clearTranscript"
+        />
 
         <OutputPane
           :height="outputHeight"
@@ -276,7 +298,9 @@ import ExercisePopup from './ExercisePopup.vue'
 import { useMonacoEditor } from '../composables/useMonacoEditor.js'
 import { useCodeExecution } from '../composables/useCodeExecution.js'
 import { useComplexityAnalysis } from '../composables/useComplexityAnalysis.js'
+import { useExplanationReview } from '../composables/useExplanationReview.js'
 import { useSavedExercises } from '../composables/useSavedExercises.js'
+import ExplainPanel from './ExplainPanel.vue'
 import { useProblemGeneration } from '../composables/useProblemGeneration.js'
 
 const props = defineProps({
@@ -436,6 +460,17 @@ const { isAnalyzing, analysisResult, analysisError, analyze, clearAnalysis } =
     openAuth: () => emit('open-auth'),
   })
 
+// ── Composable 7: Explanation review ──
+const {
+  recordingState, transcript, interimText, reviewResult, reviewError,
+  isSpeechSupported, startRecording, stopRecording, submitForReview, resetExplain, clearTranscript, loadExplanation,
+} = useExplanationReview({
+  getGeneratedProblem: () => generatedProblem.value,
+  getCategoryName: () => props.category.name,
+  openAuth: () => emit('open-auth'),
+  getCurrentExerciseId: () => currentExerciseId.value,
+})
+
 // ── Editor tab bar (code vs solution) ──
 const activeEditorTab = ref('code')
 const savedUserCode = ref('')
@@ -443,8 +478,8 @@ const savedUserCode = ref('')
 // Wire late-binding callbacks now that all composables are initialised
 _runCode = runCode
 _scheduleSave = () => {
-  // Don't autosave when viewing the solution tab — editor contains solution code, not user code
-  if (activeEditorTab.value !== 'solution') scheduleSave()
+  // Only autosave when on the code tab — solution tab has solution code, explain tab has no editor
+  if (activeEditorTab.value === 'code') scheduleSave()
 }
 
 const hasSolution = computed(() =>
@@ -454,14 +489,9 @@ const hasSolution = computed(() =>
 function switchEditorTab(tab) {
   if (tab === activeEditorTab.value) return
   if (tab === 'solution' && !hasSolution.value) return
-  if (tab === 'solution') {
-    savedUserCode.value = getEditorValue()
-    setEditorValue(generatedProblem.value.solutionCode)
-    setEditorReadOnly(true)
-  } else {
-    setEditorValue(savedUserCode.value)
-    setEditorReadOnly(false)
-  }
+  if (activeEditorTab.value === 'code' || tab === 'solution') savedUserCode.value = getEditorValue()
+  if (tab === 'code')     { if (savedUserCode.value) setEditorValue(savedUserCode.value); setEditorReadOnly(false) }
+  if (tab === 'solution') { setEditorValue(generatedProblem.value.solutionCode); setEditorReadOnly(true) }
   activeEditorTab.value = tab
 }
 
@@ -479,7 +509,7 @@ const pct = computed(() => Math.round((doneCnt.value / totalCnt.value) * 100))
 async function openSavedExercise(ex) {
   const { exercise, savedCode } = await prepareOpenSavedExercise(ex.id)
   selectedExercise.value = null
-  activeEditorTab.value = 'code'
+  activeEditorTab.value = 'explain'
   savedUserCode.value = ''
   setEditorReadOnly(false)
   generatedProblem.value = exercise
@@ -487,6 +517,7 @@ async function openSavedExercise(ex) {
   testResults.value = []
   expandedTest.value = null
   setEditorValue(savedCode ?? exercise.starterCode)
+  await loadExplanation(ex.id)
 }
 
 // ── Watchers ──
@@ -501,10 +532,13 @@ watch(isGenerating, (generating) => {
     activeTestTab.value = null
     clearOutput()
     clearAnalysis()
+    resetExplain()
     activeEditorTab.value = 'code'
     savedUserCode.value = ''
-  } else if (activeEditorTab.value !== 'solution') {
-    setEditorReadOnly(false)
+  } else {
+    if (activeEditorTab.value !== 'solution') setEditorReadOnly(false)
+    // Switch to Explain tab once generation is fully done
+    if (panelMode.value === 'generated') activeEditorTab.value = 'explain'
   }
 })
 
@@ -512,12 +546,9 @@ watch(() => generatedProblem.value?.unitTests, (tests) => {
   if (tests) showTests.value = false
 })
 
-// Reset editor tabs when a new problem is generated or loaded
+// Reset savedUserCode when a new problem is generated or a saved exercise is loaded
 watch(generatedProblem, (newVal, oldVal) => {
-  if (newVal !== oldVal) {
-    activeEditorTab.value = 'code'
-    savedUserCode.value = ''
-  }
+  if (newVal !== oldVal) savedUserCode.value = ''
 })
 
 
