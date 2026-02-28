@@ -74,10 +74,32 @@
         </div>
 
         <!-- Saved generated exercises -->
-        <template v-if="savedExercises.length">
+        <template v-if="savedExercises.length || generatingJobs.length">
           <div class="sidebar-divider">
             <span class="divider-label">Generated</span>
           </div>
+
+          <!-- In-progress generation jobs (foreground + background) -->
+          <div
+            v-for="job in generatingJobs"
+            :key="'gen-' + job.seq"
+            class="saved-ex-item is-generating"
+            :class="{ 'is-active': activeGenJob === job.seq }"
+            tabindex="0"
+            role="button"
+            @click="focusGeneratingJob(job)"
+            @keydown.enter="focusGeneratingJob(job)"
+          >
+            <div class="item-content">
+              <span class="badge" :class="`badge-${job.difficulty}`">{{ job.difficulty }}</span>
+              <span class="item-title">{{ job.title || 'Generating…' }}</span>
+            </div>
+            <div class="item-actions bg-actions">
+              <span class="spinner" aria-hidden="true" />
+              <span class="bg-status">{{ job.status }}</span>
+            </div>
+          </div>
+
           <div
             v-for="ex in savedExercises"
             :key="ex.id"
@@ -139,6 +161,8 @@
           :category-color="category.color"
           :is-generating="isGenerating"
           :generation-blocked="generationBlocked"
+          :has-background-job="backgroundJobs.length > 0"
+          :background-status="backgroundJobs.length ? backgroundJobs[0].status : ''"
           :generation-status="generationStatus"
           :generation-error="generationError"
           :business-field="businessField"
@@ -165,10 +189,10 @@
             <span v-if="(isGenerating || !workerReady)" class="toolbar-sep" aria-hidden="true" />
             <button
               class="run-btn"
-              :class="{ 'is-ready': workerReady && !isRunning && !isGenerating }"
-              :style="workerReady && !isRunning && !isGenerating ? { borderColor: category.color + '70', color: category.color } : {}"
-              :disabled="!workerReady || isRunning || isGenerating"
-              :title="isGenerating ? 'waiting for generation…' : workerReady ? 'Run (Ctrl+Enter)' : 'loading python…'"
+              :class="{ 'is-ready': workerReady && !isRunning && !isGenerating && activeEditorTab !== 'explain' }"
+              :style="workerReady && !isRunning && !isGenerating && activeEditorTab !== 'explain' ? { borderColor: category.color + '70', color: category.color } : {}"
+              :disabled="!workerReady || isRunning || isGenerating || activeEditorTab === 'explain'"
+              :title="isGenerating ? 'waiting for generation…' : activeEditorTab === 'explain' ? 'Switch to code tab to run' : workerReady ? 'Run (Ctrl+Enter)' : 'loading python…'"
               @click="runCode"
             >
               <span v-if="isRunning" class="spinner spinner-run" aria-hidden="true" />
@@ -192,7 +216,7 @@
           </div>
         </div>
 
-        <div v-if="hasSolution || isGenerating || panelMode === 'generated'" class="editor-tabs">
+        <div v-if="hasSolution || isGenerating || panelMode === 'generated' || (panelMode === 'loading' && activeGenJob)" class="editor-tabs">
           <button
             v-if="panelMode === 'generated'"
             class="editor-tab"
@@ -215,9 +239,9 @@
         <div v-if="editorError && activeEditorTab !== 'explain'" class="editor-error">{{ editorError }}</div>
         <div v-show="activeEditorTab !== 'explain'" class="editor-wrap">
           <div ref="editorEl" class="editor-container" :style="editorError ? { display: 'none' } : {}" />
-          <div v-if="isGenerating" class="editor-disabled-overlay">
+          <div v-if="isGenerating || viewingBgLoading" class="editor-disabled-overlay">
             <span class="spinner" aria-hidden="true" />
-            {{ generationStatus === 'solving' ? 'solving…' : generationStatus === 'verifying' ? 'verifying…' : generationStatus === 'writing tests' ? 'writing tests…' : 'generating…' }}
+            {{ editorOverlayText }}
           </div>
 
         </div>
@@ -288,7 +312,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, reactive, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useAuth } from '../composables/useAuth.js'
 import { useResizePanels } from '../composables/useResizePanels.js'
 import GeneratorBar from './GeneratorBar.vue'
@@ -346,8 +370,60 @@ const selectedExercise = ref(null)
 const panelMode = ref('empty')
 
 function selectExercise(problem) {
+  if (activeGenJob.value && activeGenJob.value !== 'fg') stopAnim()
   selectedExercise.value = problem
-  if (panelMode.value !== 'generated') panelMode.value = 'exercise'
+  activeGenJob.value = null
+  if (panelMode.value !== 'generated' || isGenerating.value) panelMode.value = 'exercise'
+}
+
+const activeGenJob = ref(null)
+
+// Fully reset the editor space (code, solution, explain, output) to a clean slate.
+function resetEditorSpace() {
+  generatedProblem.value = null
+  activeEditorTab.value = 'code'
+  savedUserCode.value = ''
+  setEditorValue('')
+  setEditorReadOnly(true)
+  testResults.value = []
+  expandedTest.value = null
+  activeTestTab.value = null
+  clearOutput()
+  clearAnalysis()
+  resetExplain()
+}
+
+function focusGeneratingJob(job) {
+  selectedExercise.value = null
+  currentExerciseId.value = null
+  activeGenJob.value = job.seq
+
+  if (job.seq === 'fg') {
+    // Foreground: just switch the panel back to the in-progress generation view
+    if (generatedProblem.value) {
+      panelMode.value = 'generated'
+      // Restore the right editor tab based on what's available
+      if (hasSolution.value && !isGenerating.value) activeEditorTab.value = 'explain'
+      else activeEditorTab.value = 'code'
+    } else {
+      resetEditorSpace()
+      panelMode.value = 'loading'
+      startAnim()
+    }
+  } else {
+    // Background: load whatever problem snapshot exists on the bgJob
+    resetEditorSpace()
+    if (job.problem) {
+      generatedProblem.value = { ...job.problem }
+      panelMode.value = 'generated'
+      setEditorValue(job.problem.starterCode)
+      savedUserCode.value = job.problem.starterCode
+      activeEditorTab.value = 'code'
+    } else {
+      panelMode.value = 'loading'
+      startAnim()
+    }
+  }
 }
 
 // ── Exercise popup ──
@@ -381,10 +457,11 @@ const { editorError, initEditor, destroyEditor, getValue: getEditorValue, setVal
 
 // ── Composable 3: Saved exercises ──
 // getUserCode returns the user's code regardless of which editor tab is active.
-// When on the solution tab, the user's code lives in savedUserCode (not in the editor).
+// Only on the code tab does the editor hold the user's code; on solution or explain
+// the user's code lives in savedUserCode.
 function getUserCode() {
-  if (activeEditorTab.value === 'solution') return savedUserCode.value
-  return getEditorValue()
+  if (activeEditorTab.value === 'code') return getEditorValue()
+  return savedUserCode.value
 }
 
 const {
@@ -430,8 +507,8 @@ const {
 const {
   businessField, generatedProblem, isGenerating, isGeneratingTests,
   generationStatus, generationError, generationBlocked, descriptionHtml,
-  difficultyGuess, panelAnimText, BUSINESS_FIELDS,
-  generate, stopAnim,
+  difficultyGuess, panelAnimText, BUSINESS_FIELDS, backgroundJobs,
+  generate, startAnim, stopAnim, cancelGeneration,
 } = useProblemGeneration({
   getCategoryName: () => props.category.name,
   getCategoryId: () => props.category.id,
@@ -489,11 +566,43 @@ const hasSolution = computed(() =>
 function switchEditorTab(tab) {
   if (tab === activeEditorTab.value) return
   if (tab === 'solution' && !hasSolution.value) return
-  if (activeEditorTab.value === 'code' || tab === 'solution') savedUserCode.value = getEditorValue()
-  if (tab === 'code')     { if (savedUserCode.value) setEditorValue(savedUserCode.value); setEditorReadOnly(false) }
+  // Only save from the editor when leaving the code tab — it's the only tab where
+  // the editor contains the user's code. On solution/explain it holds other content.
+  if (activeEditorTab.value === 'code') savedUserCode.value = getEditorValue()
+  if (tab === 'code')     { setEditorValue(savedUserCode.value); setEditorReadOnly(false) }
   if (tab === 'solution') { setEditorValue(generatedProblem.value.solutionCode); setEditorReadOnly(true) }
   activeEditorTab.value = tab
 }
+
+// ── Generating jobs (foreground + background, for sidebar) ──
+const generatingJobs = computed(() => {
+  const jobs = []
+  if (isGenerating.value) {
+    jobs.push({
+      seq: 'fg',
+      title: generatedProblem.value?.title || '',
+      difficulty: difficultyGuess.value,
+      status: generationStatus.value,
+    })
+  }
+  jobs.push(...backgroundJobs.value)
+  return jobs
+})
+
+// ── Editor overlay for generating state ──
+const viewingBgLoading = computed(() =>
+  activeGenJob.value && activeGenJob.value !== 'fg' && panelMode.value === 'loading'
+)
+
+const editorOverlayText = computed(() => {
+  if (isGenerating.value) {
+    const s = generationStatus.value
+    return s === 'solving' ? 'solving…' : s === 'verifying' ? 'verifying…' : s === 'writing tests' ? 'writing tests…' : 'generating…'
+  }
+  // Viewing a bg job
+  const job = backgroundJobs.value.find(j => j.seq === activeGenJob.value)
+  return (job?.status || 'generating') + '…'
+})
 
 // ── Derived counts ──
 const doneCnt = computed(() =>
@@ -507,16 +616,22 @@ const pct = computed(() => Math.round((doneCnt.value / totalCnt.value) * 100))
 
 // ── Open saved exercise (UI orchestration) ──
 async function openSavedExercise(ex) {
+  cancelGeneration()
+  activeGenJob.value = null
   const { exercise, savedCode } = await prepareOpenSavedExercise(ex.id)
   selectedExercise.value = null
   activeEditorTab.value = 'explain'
-  savedUserCode.value = ''
   setEditorReadOnly(false)
   generatedProblem.value = exercise
   panelMode.value = 'generated'
   testResults.value = []
   expandedTest.value = null
-  setEditorValue(savedCode ?? exercise.starterCode)
+  const codeToLoad = savedCode ?? exercise.starterCode
+  setEditorValue(codeToLoad)
+  // The generatedProblem watcher (async) will set savedUserCode to exercise.starterCode.
+  // Wait for it, then override with the actual saved code.
+  await nextTick()
+  savedUserCode.value = codeToLoad
   await loadExplanation(ex.id)
 }
 
@@ -525,30 +640,63 @@ watch(user, () => loadSavedExercises())
 
 watch(isGenerating, (generating) => {
   if (generating) {
-    setEditorReadOnly(true)
-    // Clear stale state from previous exercise
-    testResults.value = []
-    expandedTest.value = null
-    activeTestTab.value = null
-    clearOutput()
-    clearAnalysis()
-    resetExplain()
-    activeEditorTab.value = 'code'
-    savedUserCode.value = ''
+    activeGenJob.value = 'fg'
+    resetEditorSpace()
   } else {
     if (activeEditorTab.value !== 'solution') setEditorReadOnly(false)
-    // Switch to Explain tab once generation is fully done
-    if (panelMode.value === 'generated') activeEditorTab.value = 'explain'
+    // Switch to Explain tab once generation is fully done (only if user is viewing it)
+    if (panelMode.value === 'generated' && activeGenJob.value === 'fg') {
+      activeEditorTab.value = 'explain'
+    }
   }
 })
+
+// Sync bg job's problem snapshot into generatedProblem when the user is viewing it.
+// bgJob.problem is reassigned (not mutated) at each step, so this fires per-step.
+watch(
+  () => {
+    if (!activeGenJob.value || activeGenJob.value === 'fg') return null
+    const job = backgroundJobs.value.find(j => j.seq === activeGenJob.value)
+    return job?.problem
+  },
+  (snapshot) => {
+    if (snapshot) {
+      generatedProblem.value = { ...snapshot }
+      if (panelMode.value === 'loading') {
+        panelMode.value = 'generated'
+        setEditorValue(snapshot.starterCode)
+        savedUserCode.value = snapshot.starterCode
+        stopAnim()
+      }
+    }
+  },
+)
+
+// When the viewed bg job completes (removed from backgroundJobs), open the saved exercise.
+watch(
+  () => {
+    if (!activeGenJob.value || activeGenJob.value === 'fg') return true
+    return backgroundJobs.value.some(j => j.seq === activeGenJob.value)
+  },
+  (exists) => {
+    if (exists) return
+    // The bg job we were viewing just finished — find the saved exercise by title and open it.
+    const title = generatedProblem.value?.title
+    const saved = title && savedExercises.value.find(e => e.title === title)
+    activeGenJob.value = null
+    if (saved) openSavedExercise(saved)
+  },
+)
 
 watch(() => generatedProblem.value?.unitTests, (tests) => {
   if (tests) showTests.value = false
 })
 
-// Reset savedUserCode when a new problem is generated or a saved exercise is loaded
+// Seed savedUserCode with starterCode so switching to 'code' always has the right fallback.
+// This fires on every generatedProblem update (including streamed chunks during generation),
+// but that's fine — during generation the user can't type, so starterCode is correct.
 watch(generatedProblem, (newVal, oldVal) => {
-  if (newVal !== oldVal) savedUserCode.value = ''
+  if (newVal !== oldVal) savedUserCode.value = newVal?.starterCode ?? ''
 })
 
 
@@ -812,6 +960,28 @@ onBeforeUnmount(() => {
 .saved-ex-item:hover .item-title,
 .saved-ex-item.is-active .item-title { color: #e6edf3; }
 .saved-ex-item .item-title { color: #8b949e; }
+.saved-ex-item.is-generating { opacity: 0.7; cursor: pointer; }
+.saved-ex-item.is-generating:hover { background: #161b22; }
+.saved-ex-item.is-generating .item-content { flex: 1; min-width: 0; }
+.bg-actions {
+  flex-shrink: 0;
+  width: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+  background: #161b22;
+  border-left: 1px solid #21262d;
+  padding: 0 0.3rem;
+  overflow: hidden;
+}
+.bg-status {
+  font-size: 0.55rem;
+  color: #6e7681;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 
 /* ── Center: editor area ── */
 .editor-area {

@@ -65,17 +65,25 @@ Return the complete corrected problem.`
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  try { await requireAuth(req) }
-  catch (err) { return res.status(err.status ?? 401).json({ error: err.message }) }
+  let user
+  try { user = await requireAuth(req) }
+  catch (err) {
+    console.warn(`[review] auth rejected (${err.status ?? 401}): ${err.message}`)
+    return res.status(err.status ?? 401).json({ error: err.message })
+  }
 
   let provider
   try { provider = resolveProvider() }
   catch (err) { return res.status(500).json({ error: err.message }) }
 
   const { problem } = req.body ?? {}
-  if (!problem) return res.status(400).json({ error: 'problem is required' })
+  if (!problem) {
+    console.warn('[review] 400 missing problem')
+    return res.status(400).json({ error: 'problem is required' })
+  }
 
-  console.log(`[review] provider=${provider.type} title="${problem.title}"`)
+  const t0 = Date.now()
+  console.log(`[review] user=${user.id.slice(0, 8)} provider=${provider.type} title="${problem.title}" examples=${problem.examples?.length ?? 0}`)
 
   let current = problem
   const MAX_PASSES = 3
@@ -108,15 +116,16 @@ export default async function handler(req, res) {
       current = result.data
 
       if (raw.all_examples_verified === true) {
-        console.log(`[review] verified on pass ${pass + 1}:`, current.title)
+        console.log(`[review] verified on pass ${pass + 1} in ${Date.now() - t0}ms: "${current.title}"`)
         break
       }
       console.log(`[review] pass ${pass + 1} flagged issues, will retry`)
     } catch (err) {
-      console.error(`[review] error on pass ${pass + 1}, keeping previous:`, err.message)
+      console.error(`[review] error on pass ${pass + 1} after ${Date.now() - t0}ms, keeping previous:`, err.message)
       break
     }
   }
 
+  console.log(`[review] returning after ${Date.now() - t0}ms: "${current.title}"`)
   return res.status(200).json(current)
 }

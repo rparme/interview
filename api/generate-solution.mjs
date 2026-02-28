@@ -19,16 +19,20 @@ const SOLUTION_TOOL_SCHEMA = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  try { await requireAuth(req) }
-  catch (err) { return res.status(err.status ?? 401).json({ error: err.message }) }
+  let user
+  try { user = await requireAuth(req) }
+  catch (err) {
+    console.warn(`[generate-solution] auth rejected (${err.status ?? 401}): ${err.message}`)
+    return res.status(err.status ?? 401).json({ error: err.message })
+  }
 
   let provider
   try { provider = resolveProvider() }
   catch (err) { return res.status(500).json({ error: err.message }) }
 
   const { problem, unitTests, starterCode, category, retryError } = req.body ?? {}
-  if (!problem) return res.status(400).json({ error: 'problem is required' })
-  if (!unitTests) return res.status(400).json({ error: 'unitTests is required' })
+  if (!problem) { console.warn('[generate-solution] 400 missing problem'); return res.status(400).json({ error: 'problem is required' }) }
+  if (!unitTests) { console.warn('[generate-solution] 400 missing unitTests'); return res.status(400).json({ error: 'unitTests is required' }) }
 
   const categoryHint = category
     ? `\nThis is a "${category}" problem — the optimal solution should use ${category} techniques. Choose the idiomatic algorithm for this category.`
@@ -63,7 +67,10 @@ Requirements:
     userPrompt += `\n\nPrevious attempt FAILED with this error:\n\`\`\`\n${retryError}\n\`\`\`\nFix the solution so all tests pass.`
   }
 
-  console.log(`[generate-solution] provider=${provider.type} retry=${!!retryError}`)
+  const t0 = Date.now()
+  // Extract title from the problem string (first line after "Problem:" or just first 60 chars)
+  const problemTitle = (problem.match(/^(?:Problem:\s*)?(.+)/m)?.[1] ?? problem).slice(0, 60)
+  console.log(`[generate-solution] user=${user.id.slice(0, 8)} provider=${provider.type} category="${category ?? 'none'}" retry=${!!retryError} problem="${problemTitle}"`)
 
   try {
     const raw = provider.type === 'anthropic'
@@ -78,14 +85,14 @@ Requirements:
 
     const result = SolutionSchema.safeParse(normalized)
     if (!result.success) {
-      console.error('[generate-solution] schema mismatch:', result.error.issues, 'raw keys:', Object.keys(raw))
+      console.error(`[generate-solution] schema mismatch (${Date.now() - t0}ms):`, result.error.issues, 'raw keys:', Object.keys(raw))
       return res.status(502).json({ error: 'Solution schema mismatch', detail: result.error.issues })
     }
 
-    console.log('[generate-solution] done, code_length:', result.data.code.length)
+    console.log(`[generate-solution] done in ${Date.now() - t0}ms: code=${result.data.code.length}chars explanation=${result.data.explanation.length}chars`)
     return res.status(200).json(result.data)
   } catch (err) {
-    console.error('[generate-solution] error:', err.message)
+    console.error(`[generate-solution] error after ${Date.now() - t0}ms:`, err.message)
     return res.status(err.status ?? 500).json({ error: err.message, detail: err.detail })
   }
 }

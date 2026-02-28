@@ -40,15 +40,22 @@ const PROBLEM_TOOL_SCHEMA = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  try { await requireSubscribed(req, req.body?.categoryId) }
-  catch (err) { return res.status(err.status ?? 401).json({ error: err.message, code: err.code }) }
+  let user
+  try { user = await requireSubscribed(req, req.body?.categoryId) }
+  catch (err) {
+    console.warn(`[generate] auth rejected (${err.status ?? 401}): ${err.message}`)
+    return res.status(err.status ?? 401).json({ error: err.message, code: err.code })
+  }
 
   let provider
   try { provider = resolveProvider() }
   catch (err) { return res.status(500).json({ error: err.message }) }
 
   const { category, categoryId, selectedProblems = [], businessField } = req.body ?? {}
-  if (!category) return res.status(400).json({ error: 'category is required' })
+  if (!category) {
+    console.warn('[generate] 400 missing category')
+    return res.status(400).json({ error: 'category is required' })
+  }
 
   const referenceContext = selectedProblems.length
     ? `Model difficulty and patterns after: ${selectedProblems.map(p => `"${p.title}" (${p.difficulty})`).join(', ')}.`
@@ -72,7 +79,8 @@ Requirements:
 - constraints: 3-4 short items (e.g. "2 ≤ n ≤ 10⁴", "O(n) time expected").
 - starterCode: Python \`class Solution\` with one method, correct type hints, body is just \`pass\`.`
 
-  console.log(`[generate] provider=${provider.type} category="${category}" theme="${businessField ?? 'none'}"`)
+  const t0 = Date.now()
+  console.log(`[generate] user=${user.id.slice(0, 8)} provider=${provider.type} category="${category}" theme="${businessField ?? 'none'}" refs=${selectedProblems.length}`)
 
   try {
     const raw = provider.type === 'anthropic'
@@ -81,14 +89,14 @@ Requirements:
 
     const result = ProblemSchema.safeParse(raw)
     if (!result.success) {
-      console.error('[generate] schema mismatch:', result.error.issues)
+      console.error(`[generate] schema mismatch (${Date.now() - t0}ms):`, result.error.issues)
       return res.status(502).json({ error: 'Problem schema mismatch', detail: result.error.issues })
     }
 
-    console.log('[generate] done:', result.data.title)
+    console.log(`[generate] done in ${Date.now() - t0}ms: "${result.data.title}"`)
     return res.status(200).json(result.data)
   } catch (err) {
-    console.error('[generate] error:', err.message)
+    console.error(`[generate] error after ${Date.now() - t0}ms:`, err.message)
     return res.status(err.status ?? 500).json({ error: err.message, detail: err.detail })
   }
 }

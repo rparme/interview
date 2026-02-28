@@ -35,14 +35,15 @@
       </select>
       <button
         class="generate-btn"
-        :class="{ 'is-loading': isGenerating, 'is-blocked': generationBlocked }"
+        :class="{ 'is-loading': isGenerating, 'is-blocked': generationBlocked && !hasBackgroundJob }"
         :style="!isGenerating && !generationBlocked ? { borderColor: categoryColor + '80', color: categoryColor } : {}"
         :disabled="isGenerating || generationBlocked"
-        :title="generationBlocked ? 'Subscribe to generate more exercises' : undefined"
+        :title="hasBackgroundJob ? 'A problem is generating in the background' : generationBlocked ? 'Subscribe to generate more exercises' : undefined"
         @click="$emit('generate')"
       >
-        <span class="gen-prompt" aria-hidden="true">{{ generationBlocked ? '⊘' : '&gt;_' }}</span>
+        <span class="gen-prompt" aria-hidden="true">{{ generationBlocked && !hasBackgroundJob ? '⊘' : '&gt;_' }}</span>
         <span v-if="isGenerating">{{ generationStatus }}<span class="anim-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></span>
+        <span v-else-if="hasBackgroundJob"><span class="spinner spinner-bg" aria-hidden="true" />{{ backgroundStatus || 'generating' }}<span class="anim-dots" aria-hidden="true"><span>.</span><span>.</span><span>.</span></span></span>
         <span v-else-if="generationBlocked">subscribe to generate more</span>
         <span v-else>generate</span>
       </button>
@@ -62,6 +63,8 @@ defineProps({
   categoryColor:    { type: String, default: '#58a6ff' },
   isGenerating:     { type: Boolean, default: false },
   generationBlocked:{ type: Boolean, default: false },
+  hasBackgroundJob: { type: Boolean, default: false },
+  backgroundStatus: { type: String, default: '' },
   generationStatus: { type: String, default: '' },
   generationError:  { type: String, default: null },
   businessField:    { type: String, default: '' },
@@ -182,6 +185,14 @@ defineEmits(['update:businessField', 'remove-ai-chip', 'remove-gen-chip', 'gener
   letter-spacing: -0.04em;
   opacity: 0.75;
 }
+
+.spinner-bg {
+  display: inline-block; width: 9px; height: 9px;
+  border: 1.5px solid #30363d; border-top-color: #58a6ff;
+  border-radius: 50%; animation: spin 0.8s linear infinite;
+  margin-right: 0.35rem; vertical-align: middle;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 
 .gen-error {
   padding: 0.45rem 1rem;

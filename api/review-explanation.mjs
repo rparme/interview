@@ -37,15 +37,22 @@ const REVIEW_TOOL_SCHEMA = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  try { await requireAuth(req) }
-  catch (err) { return res.status(err.status ?? 401).json({ error: err.message, code: err.code }) }
+  let user
+  try { user = await requireAuth(req) }
+  catch (err) {
+    console.warn(`[review-explanation] auth rejected (${err.status ?? 401}): ${err.message}`)
+    return res.status(err.status ?? 401).json({ error: err.message, code: err.code })
+  }
 
   let provider
   try { provider = resolveProvider() }
   catch (err) { return res.status(500).json({ error: err.message }) }
 
   const { problem, category, transcript } = req.body ?? {}
-  if (!transcript?.trim()) return res.status(400).json({ error: 'transcript is required' })
+  if (!transcript?.trim()) {
+    console.warn('[review-explanation] 400 missing transcript')
+    return res.status(400).json({ error: 'transcript is required' })
+  }
 
   const systemPrompt = 'You are an experienced technical interviewer at a top tech company. You will receive a speech-to-text transcript of a candidate\'s verbal explanation — expect occasional transcription errors, run-on sentences, filler words, and garbled phrases. Use context to infer what the candidate meant rather than penalising transcription noise. Evaluate their approach explanation on: intuition (did they identify the right pattern and why it fits?), clarity (could you follow the explanation despite the raw transcript?), tradeoffs (did they mention complexity or alternatives?). Do NOT penalise for not having a complete solution — reward identifying the core insight and communicating it confidently. Be constructive, specific, and concise.'
 
@@ -57,7 +64,8 @@ export default async function handler(req, res) {
   if (category) userPrompt += `\nCategory hint: ${category}\n`
   userPrompt += `\nCandidate's verbal explanation:\n"${transcript}"`
 
-  console.log(`[review-explanation] provider=${provider.type} transcript_length=${transcript.length}`)
+  const t0 = Date.now()
+  console.log(`[review-explanation] user=${user.id.slice(0, 8)} provider=${provider.type} problem="${problem?.title ?? 'none'}" category="${category ?? 'none'}" transcript_length=${transcript.length}`)
 
   try {
     const raw = provider.type === 'anthropic'
@@ -66,14 +74,15 @@ export default async function handler(req, res) {
 
     const result = ReviewSchema.safeParse(raw)
     if (!result.success) {
-      console.error('[review-explanation] schema mismatch:', result.error.issues)
+      console.error(`[review-explanation] schema mismatch (${Date.now() - t0}ms):`, result.error.issues)
       return res.status(502).json({ error: 'Review schema mismatch', detail: result.error.issues })
     }
 
-    console.log('[review-explanation] done: overall=', result.data.overall)
+    const { overall, dimensions } = result.data
+    console.log(`[review-explanation] done in ${Date.now() - t0}ms: overall=${overall} intuition=${dimensions.intuition} clarity=${dimensions.clarity} tradeoffs=${dimensions.tradeoffs}`)
     return res.status(200).json(result.data)
   } catch (err) {
-    console.error('[review-explanation] error:', err.message)
+    console.error(`[review-explanation] error after ${Date.now() - t0}ms:`, err.message)
     return res.status(err.status ?? 500).json({ error: err.message, detail: err.detail })
   }
 }

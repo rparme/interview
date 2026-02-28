@@ -34,8 +34,12 @@ const ResultSchema = z.object({
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  try { await requireAuth(req) }
-  catch (err) { return res.status(err.status ?? 401).json({ error: err.message }) }
+  let user
+  try { user = await requireAuth(req) }
+  catch (err) {
+    console.warn(`[generate-tests] auth rejected (${err.status ?? 401}): ${err.message}`)
+    return res.status(err.status ?? 401).json({ error: err.message })
+  }
 
   let provider
   try { provider = resolveProvider() }
@@ -43,6 +47,7 @@ export default async function handler(req, res) {
 
   const { problem } = req.body ?? {}
   if (!problem?.title || !problem?.starterCode) {
+    console.warn('[generate-tests] 400 missing problem/title/starterCode')
     return res.status(400).json({ error: 'problem (with title and starterCode) is required' })
   }
 
@@ -69,7 +74,8 @@ Rules:
 - End with: if __name__ == "__main__": unittest.main(verbosity=2)
 - In testCases, provide one entry per test method with the exact method name, the human-readable input, and expected output`
 
-  console.log('[generate-tests] generating for:', problem.title)
+  const t0 = Date.now()
+  console.log(`[generate-tests] user=${user.id.slice(0, 8)} provider=${provider.type} problem="${problem.title}" examples=${problem.examples?.length ?? 0}`)
 
   try {
     let raw
@@ -90,6 +96,7 @@ Rules:
 
     const result = ResultSchema.safeParse(raw)
     if (!result.success) {
+      console.error(`[generate-tests] schema mismatch (${Date.now() - t0}ms):`, result.error.issues)
       return res.status(502).json({ error: 'Tests schema mismatch', detail: result.error.issues })
     }
 
@@ -98,10 +105,10 @@ Rules:
     const casesComment = `# __CASES__:${JSON.stringify(result.data.testCases)}\n`
     const unitTests = casesComment + result.data.unitTests
 
-    console.log('[generate-tests] done, length:', unitTests.length, 'cases:', result.data.testCases.length)
+    console.log(`[generate-tests] done in ${Date.now() - t0}ms: ${result.data.testCases.length} cases, ${unitTests.length} chars`)
     return res.status(200).json({ unitTests })
   } catch (err) {
-    console.error('[generate-tests] error:', err.message)
+    console.error(`[generate-tests] error after ${Date.now() - t0}ms:`, err.message)
     return res.status(err.status ?? 500).json({ error: err.message, detail: err.detail })
   }
 }

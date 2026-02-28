@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref, computed, reactive } from 'vue'
 import { marked } from 'marked'
 import { useAuth } from './useAuth.js'
 import { supabase } from '../lib/supabase.js'
@@ -101,6 +101,11 @@ export function useProblemGeneration({
   const isGenerating = ref(false)
   const generationStatus = ref('')
   const generationError = ref(null)
+  const backgroundJobs = ref([])
+
+  // Staleness detection: if the user switches exercises mid-generation,
+  // the async generate() must stop mutating shared state.
+  let _genSeq = 0
 
   const descriptionHtml = computed(() =>
     generatedProblem.value ? marked.parse(generatedProblem.value.description) : ''
@@ -123,6 +128,7 @@ export function useProblemGeneration({
   const freeExerciseLimit = _freeLimit !== undefined && _freeLimit !== '' ? Number(_freeLimit) : 1
 
   const generationBlocked = computed(() => {
+    if (backgroundJobs.value.length > 0) return true
     if (isSubscribed.value) return false
     if (freeExerciseLimit === 0) return true
     return savedExercises.value.length >= freeExerciseLimit
@@ -143,6 +149,7 @@ export function useProblemGeneration({
   })
 
   function startAnim() {
+    if (_animTimer) clearInterval(_animTimer)
     animFrame.value = 0
     _animTimer = setInterval(() => { animFrame.value++ }, 200)
   }
@@ -179,6 +186,38 @@ export function useProblemGeneration({
     await loadSavedExercises()
     if (generationBlocked.value) return
     await flushSave()
+
+    const seq = ++_genSeq
+    const stale = () => _genSeq !== seq
+
+    // Background mode: when the user switches exercises mid-generation,
+    // instead of cancelling, we continue running but stop mutating shared UI refs.
+    let bg = false
+    let bgJob = null
+
+    function enterBg(title) {
+      if (bg) return
+      bg = true
+      // cancelGeneration() may have already created a placeholder for this seq
+      const existing = backgroundJobs.value.find(j => j.seq === seq)
+      if (existing) {
+        bgJob = existing
+        if (title) bgJob.title = title
+      } else {
+        bgJob = reactive({ seq, title: title || '', difficulty: difficultyGuess.value, status: generationStatus.value })
+        backgroundJobs.value = [...backgroundJobs.value, bgJob]
+      }
+    }
+
+    function removeBgJob() {
+      backgroundJobs.value = backgroundJobs.value.filter(j => j.seq !== seq)
+    }
+
+    function setStatus(status) {
+      if (!bg) generationStatus.value = status
+      else if (bgJob) bgJob.status = status
+    }
+
     currentExerciseId.value = null
     isGenerating.value = true
     generationError.value = null
@@ -201,27 +240,39 @@ export function useProblemGeneration({
         selectedProblems,
         businessField: businessField.value || null,
       })
+      if (stale()) enterBg(draft.title)
 
       // Step 2 — review & fix examples
-      generationStatus.value = 'reviewing'
+      setStatus('reviewing')
       const problem = await apiFetch('/api/review', { problem: draft })
+      if (stale()) enterBg(problem.title)
 
       // Show reviewed problem; switch panel to generated view
-      generatedProblem.value = { ...problem, unitTests: '', difficulty: difficultyGuess.value }
-      panelMode.value = 'generated'
-      setEditorValue(problem.starterCode)
+      const problemSnapshot = { ...problem, unitTests: '', difficulty: difficultyGuess.value }
+      if (!bg) {
+        generatedProblem.value = problemSnapshot
+        panelMode.value = 'generated'
+        setEditorValue(problem.starterCode)
+      } else if (bgJob) {
+        bgJob.problem = problemSnapshot
+      }
 
       // Step 3 — generate unit tests
-      generationStatus.value = 'writing tests'
+      setStatus('writing tests')
       const { unitTests } = await apiFetch('/api/generate-tests', { problem })
-      generatedProblem.value = { ...problem, unitTests, difficulty: difficultyGuess.value, solutionCode: '', solutionExplanation: '' }
+      if (stale()) enterBg(problem.title)
+      if (!bg) {
+        generatedProblem.value = { ...problem, unitTests, difficulty: difficultyGuess.value, solutionCode: '', solutionExplanation: '' }
+      } else if (bgJob) {
+        bgJob.problem = { ...problem, unitTests, difficulty: difficultyGuess.value, solutionCode: '', solutionExplanation: '' }
+      }
 
       // Step 4 — generate & verify optimal solution (diagnose + fix if tests fail)
       let solutionCode = ''
       let solutionExplanation = ''
       let currentTests = unitTests
       try {
-        generationStatus.value = 'solving'
+        setStatus('solving')
         const problemText = `${problem.title}\n${problem.description}\n\nExamples:\n${problem.examples.map((e, i) => `${i + 1}. Input: ${e.input} → Output: ${e.output}`).join('\n')}\n\nConstraints:\n${problem.constraints.join('\n')}\n\nStarter code (exact method signature):\n${problem.starterCode}`
 
         const solution = await apiFetch('/api/generate-solution', {
@@ -230,6 +281,7 @@ export function useProblemGeneration({
           starterCode: problem.starterCode,
           category: getCategoryName(),
         })
+        if (stale()) enterBg(problem.title)
         solutionCode = solution.code
         solutionExplanation = solution.explanation
 
@@ -292,9 +344,11 @@ print('__TEST_RESULTS__:' + _json.dumps(_results))
           let prevDiagnoses = []
 
           for (let round = 0; round <= MAX_DIAGNOSIS_ROUNDS; round++) {
-            generationStatus.value = 'verifying'
+            if (stale()) enterBg(problem.title)
+            setStatus('verifying')
             const testCode = stripMain(currentTests)
             const pyResult = await runPython(`${solutionCode}\n\n${testCode}\n${TEST_RUNNER}`)
+            if (stale()) enterBg(problem.title)
             const { allPass } = checkResults(pyResult)
 
             if (allPass) {
@@ -308,7 +362,7 @@ print('__TEST_RESULTS__:' + _json.dumps(_results))
             }
 
             console.warn(`[generate] verification failed (round ${round}) — diagnosing`)
-            generationStatus.value = 'solving'
+            setStatus('solving')
             const errorOutput = formatErrorOutput(pyResult)
 
             let diagnosisHint = ''
@@ -331,13 +385,15 @@ print('__TEST_RESULTS__:' + _json.dumps(_results))
               console.warn(`[generate] diagnosis round ${round} failed: ${diagErr.message} — skipping`)
               continue
             }
+            if (stale()) enterBg(problem.title)
 
             console.log(`[generate] diagnosis round ${round}: fault=${diagnosis.fault}, reasoning: ${diagnosis.reasoning.slice(0, 80)}`)
             prevDiagnoses.push({ fault: diagnosis.fault, reasoning: diagnosis.reasoning })
 
             if (diagnosis.fault === 'tests') {
               currentTests = diagnosis.fixedCode
-              generatedProblem.value = { ...generatedProblem.value, unitTests: currentTests }
+              if (!bg) generatedProblem.value = { ...generatedProblem.value, unitTests: currentTests }
+              else if (bgJob?.problem) bgJob.problem = { ...bgJob.problem, unitTests: currentTests }
             } else {
               solutionCode = diagnosis.fixedCode
               if (diagnosis.fixedExplanation) solutionExplanation = diagnosis.fixedExplanation
@@ -348,23 +404,55 @@ print('__TEST_RESULTS__:' + _json.dumps(_results))
         console.warn('[generate] solution step failed:', err.message, '— continuing without solution')
       }
 
-      generatedProblem.value = { ...generatedProblem.value, unitTests: currentTests, solutionCode, solutionExplanation }
+      if (stale()) enterBg(problem.title)
+      if (!bg) {
+        generatedProblem.value = { ...generatedProblem.value, unitTests: currentTests, solutionCode, solutionExplanation }
+      } else if (bgJob) {
+        bgJob.problem = { ...(bgJob.problem || problem), unitTests: currentTests, solutionCode, solutionExplanation }
+      }
 
-      // Persist to DB and wire up autosave
+      // Persist to DB — always runs (foreground or background)
+      setStatus('saving')
       console.log('[generate] saving to DB, user:', user.value?.id ?? '(not logged in)')
       const savedId = await persistGeneratedExercise(problem, currentTests, difficultyGuess.value, solutionCode, solutionExplanation)
-      if (savedId) {
+      if (!bg && savedId) {
         generatedProblem.value = { ...generatedProblem.value, id: savedId }
         currentExerciseId.value = savedId
+      }
+      if (savedId) {
         dbSaveError.value = null
         await loadSavedExercises()
-      } else if (user.value) {
+      } else if (!bg && user.value) {
         dbSaveError.value = 'Could not save — check browser console and ensure the DB migration has been applied in Supabase.'
       }
+      removeBgJob()
     } catch (err) {
-      generationError.value = err.message
-      panelMode.value = getSelectedExercise?.() ? 'exercise' : 'empty'
+      if (!bg) {
+        generationError.value = err.message
+        panelMode.value = getSelectedExercise?.() ? 'exercise' : 'empty'
+      }
+      removeBgJob()
     } finally {
+      if (!bg) {
+        stopAnim()
+        isGenerating.value = false
+        generationStatus.value = ''
+      }
+    }
+  }
+
+  function cancelGeneration() {
+    const cancelledSeq = _genSeq
+    _genSeq++
+    if (isGenerating.value) {
+      // Generation is in flight — create a placeholder bgJob immediately
+      // so the button stays disabled during the gap before generate() detects staleness.
+      // Snapshot whatever problem data exists so far for preview.
+      const placeholder = reactive({
+        seq: cancelledSeq, title: '', difficulty: difficultyGuess.value, status: generationStatus.value,
+        problem: generatedProblem.value ? { ...generatedProblem.value } : null,
+      })
+      backgroundJobs.value = [...backgroundJobs.value, placeholder]
       stopAnim()
       isGenerating.value = false
       generationStatus.value = ''
@@ -383,7 +471,10 @@ print('__TEST_RESULTS__:' + _json.dumps(_results))
     difficultyGuess,
     panelAnimText,
     BUSINESS_FIELDS,
+    backgroundJobs,
     generate,
+    cancelGeneration,
+    startAnim,
     stopAnim,
   }
 }

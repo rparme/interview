@@ -36,8 +36,12 @@ const DIAGNOSIS_TOOL_SCHEMA = {
 export default async function handler(req, res) {
   if (req.method !== 'POST') return res.status(405).json({ error: 'Method not allowed' })
 
-  try { await requireAuth(req) }
-  catch (err) { return res.status(err.status ?? 401).json({ error: err.message }) }
+  let user
+  try { user = await requireAuth(req) }
+  catch (err) {
+    console.warn(`[diagnose-failure] auth rejected (${err.status ?? 401}): ${err.message}`)
+    return res.status(err.status ?? 401).json({ error: err.message })
+  }
 
   let provider
   try { provider = resolveProvider() }
@@ -45,6 +49,7 @@ export default async function handler(req, res) {
 
   const { problem, solutionCode, unitTests, testOutput, category } = req.body ?? {}
   if (!problem || !solutionCode || !unitTests || !testOutput) {
+    console.warn('[diagnose-failure] 400 missing required fields:', { problem: !!problem, solutionCode: !!solutionCode, unitTests: !!unitTests, testOutput: !!testOutput })
     return res.status(400).json({ error: 'problem, solutionCode, unitTests, and testOutput are required' })
   }
 
@@ -80,7 +85,9 @@ Instructions:
 - Return the COMPLETE corrected code (not a diff), ready to run.
 - If fixing tests, preserve the \`# __CASES__:...\` header comment if present (update it to match the corrected assertions).`
 
-  console.log(`[diagnose-failure] provider=${provider.type}`)
+  const t0 = Date.now()
+  const problemTitle = (problem.match(/^(?:Problem:\s*)?(.+)/m)?.[1] ?? problem).slice(0, 60)
+  console.log(`[diagnose-failure] user=${user.id.slice(0, 8)} provider=${provider.type} category="${category ?? 'none'}" problem="${problemTitle}" output_length=${testOutput.length}`)
 
   try {
     const raw = provider.type === 'anthropic'
@@ -96,7 +103,13 @@ Instructions:
           userPrompt: userPrompt + '\n\nRespond with valid JSON only: { "fault": "solution"|"tests", "reasoning": "...", "fixedCode": "...", "fixedExplanation": "..." }',
         })
 
-    console.log('[diagnose-failure] raw keys:', Object.keys(raw), 'fault:', raw.fault ?? raw.Fault ?? '(missing)')
+    console.log(`[diagnose-failure] raw keys: [${Object.keys(raw).join(', ')}] fault="${raw.fault ?? raw.Fault ?? '(missing)'}"`)
+
+    // Empty response — model was likely interrupted or returned a partial tool call
+    if (!raw || Object.keys(raw).length === 0) {
+      console.warn(`[diagnose-failure] empty tool response (${Date.now() - t0}ms) — treating as failed round`)
+      return res.status(502).json({ error: 'Diagnosis returned empty response (model may have been interrupted)' })
+    }
 
     // Normalize: the AI sometimes uses snake_case, different casing, or nests the response
     const normalized = {
@@ -115,14 +128,14 @@ Instructions:
 
     const result = DiagnosisSchema.safeParse(normalized)
     if (!result.success) {
-      console.error('[diagnose-failure] schema mismatch after normalization:', result.error.issues, 'raw:', JSON.stringify(raw).slice(0, 500))
+      console.error(`[diagnose-failure] schema mismatch after normalization (${Date.now() - t0}ms):`, result.error.issues, 'raw:', JSON.stringify(raw).slice(0, 500))
       return res.status(502).json({ error: 'Diagnosis schema mismatch', detail: result.error.issues })
     }
 
-    console.log(`[diagnose-failure] fault=${result.data.fault}, reasoning: ${result.data.reasoning.slice(0, 80)}…`)
+    console.log(`[diagnose-failure] done in ${Date.now() - t0}ms: fault="${result.data.fault}" — ${result.data.reasoning.slice(0, 100)}…`)
     return res.status(200).json(result.data)
   } catch (err) {
-    console.error('[diagnose-failure] error:', err.message)
+    console.error(`[diagnose-failure] error after ${Date.now() - t0}ms:`, err.message)
     return res.status(err.status ?? 500).json({ error: err.message, detail: err.detail })
   }
 }
