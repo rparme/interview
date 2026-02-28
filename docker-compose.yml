@@ -32,8 +32,12 @@ services:
       - ./supabase/migrations/20260228000000_drill_exercise_content.sql:/docker-entrypoint-initdb.d/09_drill_exercise_content.sql:ro
       # 10 — drill exercise content data
       - ./supabase/migrations/20260228000001_drill_content_data.sql:/docker-entrypoint-initdb.d/10_drill_content_data.sql:ro
-      # 11 — anon + authenticator roles for PostgREST
-      - ./docker/postgrest_roles.sql:/docker-entrypoint-initdb.d/11_postgrest_roles.sql:ro
+      # 11 — curate drills: drop url, remove 2, add 9 new
+      - ./supabase/migrations/20260228000003_curate_drills.sql:/docker-entrypoint-initdb.d/11_curate_drills.sql:ro
+      # 12 — new drill exercise content data
+      - ./supabase/migrations/20260228000004_new_drill_content.sql:/docker-entrypoint-initdb.d/12_new_drill_content.sql:ro
+      # 13 — anon + authenticator roles for PostgREST
+      - ./docker/postgrest_roles.sql:/docker-entrypoint-initdb.d/13_postgrest_roles.sql:ro
       # Persist data across container restarts
       - db_data:/var/lib/postgresql/data
     healthcheck:
