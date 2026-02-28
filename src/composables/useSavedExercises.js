@@ -23,6 +23,7 @@ export function useSavedExercises({ getCategoryId, openAuth, getEditorValue }) {
 
   const savedExercises = ref([])
   const currentExerciseId = ref(null)
+  const currentDrillLc = ref(null)
   const dbSaveError = ref(null)
   let _saveTimer = null
 
@@ -101,15 +102,25 @@ export function useSavedExercises({ getCategoryId, openAuth, getEditorValue }) {
 
   async function flushSave() {
     clearTimeout(_saveTimer)
-    if (!user.value || !currentExerciseId.value) return
+    if (!user.value) return
     const code = getEditorValue()
     if (!code) return
-    await supabase
-      .from('user_solutions')
-      .upsert(
-        { user_id: user.value.id, generated_exercise_id: currentExerciseId.value, code, updated_at: new Date().toISOString() },
-        { onConflict: 'user_id,generated_exercise_id' }
-      )
+
+    if (currentDrillLc.value) {
+      await supabase
+        .from('user_solutions')
+        .upsert(
+          { user_id: user.value.id, lc: currentDrillLc.value, code, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id,lc' }
+        )
+    } else if (currentExerciseId.value) {
+      await supabase
+        .from('user_solutions')
+        .upsert(
+          { user_id: user.value.id, generated_exercise_id: currentExerciseId.value, code, updated_at: new Date().toISOString() },
+          { onConflict: 'user_id,generated_exercise_id' }
+        )
+    }
   }
 
   async function loadSavedCode(exerciseId) {
@@ -119,6 +130,17 @@ export function useSavedExercises({ getCategoryId, openAuth, getEditorValue }) {
       .select('code')
       .eq('user_id', user.value.id)
       .eq('generated_exercise_id', exerciseId)
+      .maybeSingle()
+    return data?.code ?? null
+  }
+
+  async function loadDrillCode(lc) {
+    if (!user.value) return null
+    const { data } = await supabase
+      .from('user_solutions')
+      .select('code')
+      .eq('user_id', user.value.id)
+      .eq('lc', lc)
       .maybeSingle()
     return data?.code ?? null
   }
@@ -140,6 +162,7 @@ export function useSavedExercises({ getCategoryId, openAuth, getEditorValue }) {
   return {
     savedExercises,
     currentExerciseId,
+    currentDrillLc,
     dbSaveError,
     loadSavedExercises,
     persistGeneratedExercise,
@@ -147,6 +170,7 @@ export function useSavedExercises({ getCategoryId, openAuth, getEditorValue }) {
     toggleGenDone,
     scheduleSave,
     flushSave,
+    loadDrillCode,
     prepareOpenSavedExercise,
     cleanupSave,
   }

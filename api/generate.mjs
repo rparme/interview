@@ -65,7 +65,7 @@ export default async function handler(req, res) {
     ? `Frame it in a ${businessField} context — a real engineering problem someone there would solve.`
     : 'Use a neutral technical context.'
 
-  const systemPrompt = 'You are an expert coding interview problem designer. Generate clear, well-scoped LeetCode-style problems. The problem MUST belong to the specified algorithm/data-structure category — this is the most important constraint.'
+  const systemPrompt = 'You are an expert coding interview problem designer. Generate clear, well-scoped coding interview problems. The problem MUST belong to the specified algorithm/data-structure category — this is the most important constraint.'
   const userPrompt = `Generate a coding interview problem.
 
 **Category (IMPORTANT — the problem MUST test this concept): ${category}**

@@ -26,8 +26,14 @@ services:
       - ./supabase/migrations/20260225000002_gen_exercise_done.sql:/docker-entrypoint-initdb.d/06_gen_exercise_done.sql:ro
       # 07 — solution columns on generated exercises
       - ./supabase/migrations/20260226000000_exercise_solution.sql:/docker-entrypoint-initdb.d/07_exercise_solution.sql:ro
-      # 08 — anon + authenticator roles for PostgREST
-      - ./docker/postgrest_roles.sql:/docker-entrypoint-initdb.d/08_postgrest_roles.sql:ro
+      # 08 — explanation review columns on user solutions
+      - ./supabase/migrations/20260227000000_explanation_review.sql:/docker-entrypoint-initdb.d/08_explanation_review.sql:ro
+      # 09 — drill exercise content columns on problems
+      - ./supabase/migrations/20260228000000_drill_exercise_content.sql:/docker-entrypoint-initdb.d/09_drill_exercise_content.sql:ro
+      # 10 — drill exercise content data
+      - ./supabase/migrations/20260228000001_drill_content_data.sql:/docker-entrypoint-initdb.d/10_drill_content_data.sql:ro
+      # 11 — anon + authenticator roles for PostgREST
+      - ./docker/postgrest_roles.sql:/docker-entrypoint-initdb.d/11_postgrest_roles.sql:ro
       # Persist data across container restarts
       - db_data:/var/lib/postgresql/data
     healthcheck:

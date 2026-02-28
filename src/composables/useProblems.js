@@ -24,12 +24,20 @@ async function loadReferenceData() {
   for (const p of probs) {
     if (!byCategory[p.category_id]) byCategory[p.category_id] = []
     byCategory[p.category_id].push({
-      lc:         p.lc,
-      title:      p.title,
-      difficulty: p.difficulty,
-      url:        p.url,
-      howTo:      p.how_to,
-      whenTo:     p.when_to,
+      lc:                  p.lc,
+      title:               p.title,
+      difficulty:          p.difficulty,
+      url:                 p.url,
+      howTo:               p.how_to,
+      whenTo:              p.when_to,
+      description:         p.description || '',
+      examples:            p.examples || [],
+      constraints:         p.constraints || [],
+      starterCode:         p.starter_code || '',
+      unitTests:           p.unit_tests || '',
+      solutionCode:        p.solution_code || '',
+      solutionExplanation: p.solution_explanation || '',
+      hasContent:          !!p.description,
     })
   }
 

@@ -2,7 +2,7 @@ import { ref } from 'vue'
 import { useAuth } from './useAuth.js'
 import { supabase } from '../lib/supabase.js'
 
-export function useExplanationReview({ getGeneratedProblem, getCategoryName, openAuth, getCurrentExerciseId }) {
+export function useExplanationReview({ getGeneratedProblem, getCategoryName, openAuth, getCurrentExerciseId, getCurrentDrillLc }) {
   const { user } = useAuth()
 
   const recordingState = ref('idle')  // 'idle' | 'recording' | 'reviewing' | 'done'
@@ -113,19 +113,23 @@ export function useExplanationReview({ getGeneratedProblem, getCategoryName, ope
 
       // Persist transcript + review to user_solutions
       const exerciseId = getCurrentExerciseId?.()
-      if (exerciseId && user.value) {
-        supabase.from('user_solutions').upsert(
-          {
-            user_id: user.value.id,
-            generated_exercise_id: exerciseId,
-            explanation_transcript: text,
-            explanation_review: result,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: 'user_id,generated_exercise_id' }
-        ).then(({ error }) => {
-          if (error) console.warn('[useExplanationReview] save error:', error.message)
-        })
+      const drillLc = getCurrentDrillLc?.()
+      if (user.value && (exerciseId || drillLc)) {
+        const row = {
+          user_id: user.value.id,
+          explanation_transcript: text,
+          explanation_review: result,
+          updated_at: new Date().toISOString(),
+        }
+        if (drillLc) {
+          row.lc = drillLc
+          supabase.from('user_solutions').upsert(row, { onConflict: 'user_id,lc' })
+            .then(({ error }) => { if (error) console.warn('[useExplanationReview] save error:', error.message) })
+        } else {
+          row.generated_exercise_id = exerciseId
+          supabase.from('user_solutions').upsert(row, { onConflict: 'user_id,generated_exercise_id' })
+            .then(({ error }) => { if (error) console.warn('[useExplanationReview] save error:', error.message) })
+        }
       }
     } catch (err) {
       reviewError.value = err.message || 'Review failed'
@@ -133,14 +137,18 @@ export function useExplanationReview({ getGeneratedProblem, getCategoryName, ope
     }
   }
 
-  async function loadExplanation(exerciseId) {
-    if (!user.value || !exerciseId) { resetExplain(); return }
-    const { data } = await supabase
+  async function loadExplanation(exerciseId, drillLc) {
+    if (!user.value || (!exerciseId && !drillLc)) { resetExplain(); return }
+    let query = supabase
       .from('user_solutions')
       .select('explanation_transcript, explanation_review')
       .eq('user_id', user.value.id)
-      .eq('generated_exercise_id', exerciseId)
-      .maybeSingle()
+    if (drillLc) {
+      query = query.eq('lc', drillLc)
+    } else {
+      query = query.eq('generated_exercise_id', exerciseId)
+    }
+    const { data } = await query.maybeSingle()
     if (data?.explanation_transcript) {
       transcript.value    = data.explanation_transcript
       reviewResult.value  = data.explanation_review ?? null

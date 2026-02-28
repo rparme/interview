@@ -21,6 +21,9 @@
 
       <!-- LEFT: problem list sidebar -->
       <div class="problems-sidebar" :style="{ width: sidebarWidth + 'px' }">
+        <div class="sidebar-divider sidebar-divider-first">
+          <span class="divider-label">Drills</span>
+        </div>
         <div
           v-for="problem in sortedProblems"
           :key="problem.lc"
@@ -29,6 +32,7 @@
             done: problem.done,
             checked: selectedForAI.has(problem.lc),
             'is-viewing': selectedExercise?.lc === problem.lc,
+            'is-active': currentDrillLc === problem.lc,
           }"
           :style="selectedForAI.has(problem.lc) ? { borderLeftColor: '#a371f7' } : {}"
           tabindex="0"
@@ -301,6 +305,7 @@
         :test-result-for="testResultFor"
         :format-test-name="formatTestName"
         :test-source-for="testSourceFor"
+        :drill-hints="currentDrillLc && selectedExercise ? { whenTo: selectedExercise.whenTo, howTo: selectedExercise.howTo } : null"
         @resize-start="onResizeStart"
         @update:show-tests="showTests = $event"
         @update:expanded-test="expandedTest = $event"
@@ -370,10 +375,47 @@ const selectedExercise = ref(null)
 const panelMode = ref('empty')
 
 function selectExercise(problem) {
+  if (problem.hasContent) {
+    openDrill(problem)
+    return
+  }
   if (activeGenJob.value && activeGenJob.value !== 'fg') stopAnim()
   selectedExercise.value = problem
   activeGenJob.value = null
+  currentDrillLc.value = null
   if (panelMode.value !== 'generated' || isGenerating.value) panelMode.value = 'exercise'
+}
+
+async function openDrill(problem) {
+  cancelGeneration()
+  activeGenJob.value = null
+  await flushSave()
+  selectedExercise.value = problem
+  currentDrillLc.value = problem.lc
+  currentExerciseId.value = null
+  activeEditorTab.value = 'explain'
+  setEditorReadOnly(false)
+  generatedProblem.value = {
+    title:               problem.title,
+    difficulty:          problem.difficulty,
+    description:         problem.description,
+    examples:            problem.examples,
+    constraints:         problem.constraints,
+    starterCode:         problem.starterCode,
+    unitTests:           problem.unitTests,
+    solutionCode:        problem.solutionCode,
+    solutionExplanation: problem.solutionExplanation,
+  }
+  panelMode.value = 'generated'
+  testResults.value = []
+  expandedTest.value = null
+
+  const savedCode = await loadDrillCode(problem.lc)
+  const codeToLoad = savedCode ?? problem.starterCode
+  setEditorValue(codeToLoad)
+  await nextTick()
+  savedUserCode.value = codeToLoad
+  await loadExplanation(null, problem.lc)
 }
 
 const activeGenJob = ref(null)
@@ -381,6 +423,7 @@ const activeGenJob = ref(null)
 // Fully reset the editor space (code, solution, explain, output) to a clean slate.
 function resetEditorSpace() {
   generatedProblem.value = null
+  currentDrillLc.value = null
   activeEditorTab.value = 'code'
   savedUserCode.value = ''
   setEditorValue('')
@@ -465,9 +508,9 @@ function getUserCode() {
 }
 
 const {
-  savedExercises, currentExerciseId, dbSaveError,
+  savedExercises, currentExerciseId, currentDrillLc, dbSaveError,
   loadSavedExercises, persistGeneratedExercise, deleteGeneratedExercise: _deleteGenExercise,
-  toggleGenDone, scheduleSave, flushSave, prepareOpenSavedExercise, cleanupSave,
+  toggleGenDone, scheduleSave, flushSave, loadDrillCode, prepareOpenSavedExercise, cleanupSave,
 } = useSavedExercises({
   getCategoryId: () => props.category.id,
   openAuth: () => emit('open-auth'),
@@ -546,6 +589,7 @@ const {
   getCategoryName: () => props.category.name,
   openAuth: () => emit('open-auth'),
   getCurrentExerciseId: () => currentExerciseId.value,
+  getCurrentDrillLc: () => currentDrillLc.value,
 })
 
 // ── Editor tab bar (code vs solution) ──
@@ -618,6 +662,7 @@ const pct = computed(() => Math.round((doneCnt.value / totalCnt.value) * 100))
 async function openSavedExercise(ex) {
   cancelGeneration()
   activeGenJob.value = null
+  currentDrillLc.value = null
   const { exercise, savedCode } = await prepareOpenSavedExercise(ex.id)
   selectedExercise.value = null
   activeEditorTab.value = 'explain'
@@ -842,6 +887,8 @@ onBeforeUnmount(() => {
 .problem-item.checked { background: #161b22; }
 .problem-item.is-viewing { background: #161b22; border-left-color: #58a6ff !important; }
 .problem-item.is-viewing .item-title { color: #e6edf3; }
+.problem-item.is-active { background: #161b22; border-left-color: #a371f7; }
+.problem-item.is-active .item-title { color: #e6edf3; }
 
 /* Left content zone (~75%) */
 .item-content {
@@ -936,6 +983,7 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; gap: 0.5rem;
   padding: 0.65rem 0.9rem 0.2rem; flex-shrink: 0;
 }
+.sidebar-divider-first { padding-top: 0.35rem; }
 .sidebar-divider::before, .sidebar-divider::after {
   content: ''; flex: 1; height: 1px; background: #21262d;
 }

@@ -6,7 +6,6 @@
         <!-- TOP BAR -->
         <div class="topbar" :style="{ borderBottomColor: categoryColor + '30' }">
           <div class="topbar-left">
-            <span class="lc-num">LC {{ problem.lc }}</span>
             <span class="badge" :class="`badge-${problem.difficulty}`">{{ problem.difficulty }}</span>
             <h2 class="problem-title">{{ problem.title }}</h2>
           </div>
@@ -22,20 +21,6 @@
               <span aria-hidden="true">{{ problem.done ? '✓' : '○' }}</span>
               {{ problem.done ? 'Done' : 'Mark done' }}
             </button>
-            <a
-              :href="problem.url"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="lc-link"
-              :style="{ borderColor: categoryColor + '50', color: categoryColor, background: categoryColor + '12' }"
-            >
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                <polyline points="15 3 21 3 21 9"/>
-                <line x1="10" y1="14" x2="21" y2="3"/>
-              </svg>
-              LeetCode
-            </a>
             <button class="close-btn" @click="$emit('close')" aria-label="Close panel">✕</button>
           </div>
         </div>
@@ -133,7 +118,7 @@ let editorInstance = null
 let monacoRef = null
 
 function getDefaultCode(problem) {
-  return `# LC ${problem.lc}: ${problem.title}\n# Difficulty: ${problem.difficulty}\n\nclass Solution:\n    def solve(self):\n        pass\n\n\n# Test your solution:\nsol = Solution()\nprint(sol.solve())\n`
+  return `# ${problem.title}\n# Difficulty: ${problem.difficulty}\n\nclass Solution:\n    def solve(self):\n        pass\n\n\n# Test your solution:\nsol = Solution()\nprint(sol.solve())\n`
 }
 
 async function initEditor(problem) {
@@ -361,16 +346,6 @@ onBeforeUnmount(() => {
   flex-shrink: 0;
 }
 
-.lc-num {
-  font-family: 'SF Mono', 'Fira Code', monospace;
-  font-size: 0.7rem;
-  color: #6e7681;
-  background: #21262d;
-  padding: 0.12rem 0.45rem;
-  border-radius: 4px;
-  flex-shrink: 0;
-}
-
 .badge {
   font-size: 0.68rem;
   font-weight: 600;
@@ -409,21 +384,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 .done-btn:hover:not(.is-done) { border-color: #58a6ff; color: #c9d1d9; }
-
-.lc-link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.35rem 0.75rem;
-  border-radius: 6px;
-  border: 1px solid;
-  font-size: 0.8rem;
-  font-weight: 600;
-  text-decoration: none;
-  transition: opacity 0.15s;
-  white-space: nowrap;
-}
-.lc-link:hover { opacity: 0.8; }
 
 .close-btn {
   background: none;
